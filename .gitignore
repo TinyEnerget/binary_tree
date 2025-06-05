@@ -1,5 +1,3 @@
-
-tree_analyzer/multi_root_analyzer_test.py
 .gitignore
 tree_analyzer/multi_root_analyzer_optimized.py
 .vscode/settings.json
