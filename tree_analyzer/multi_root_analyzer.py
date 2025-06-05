@@ -431,6 +431,8 @@ if __name__ == '__main__':
     multi_analyzer.print_shared_nodes()
     multi_analyzer.print_connections_between_roots()
     multi_analyzer.print_paths_between_nodes("A", "G")
+    multi_analyzer.print_shortest_path_to_node("G")
+    print("\n")
 
     # Визуализация леса
     from visualize_forest_connection import VisualizeForest
