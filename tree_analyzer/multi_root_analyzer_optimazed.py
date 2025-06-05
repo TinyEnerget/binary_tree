@@ -7,450 +7,470 @@ import threading
 from collections import defaultdict, deque
 import time
 
+# Assuming BaseMultiRootAnalyzer is in multi_root_analyzer.py in the same directory
+from .multi_root_analyzer import BaseMultiRootAnalyzer
 
-class MultiRootAnalyzerOpt:
+
+class MultiRootAnalyzerOpt(BaseMultiRootAnalyzer):
     """
-    Оптимизированный анализатор леса деревьев с поддержкой многопоточности и JIT-компиляции.
-    
-    Этот класс обеспечивает расширенный анализ леса путем:
-    - Отслеживания общих узлов между несколькими деревьями
-    - Поиска связей между корневыми узлами
-    - Генерации детальной статистики леса и деревьев
-    - Параллельной обработки для повышения производительности
-    
+    Optimized forest analyzer with multithreading and caching capabilities.
+    Inherits core logic from BaseMultiRootAnalyzer and overrides key methods
+    for performance enhancement.
+
+    This class is designed for analyzing large forests or complex tree structures
+    where performance is a concern. It uses ThreadPoolExecutor for parallel processing
+    of operations on multiple trees and LRU caching for memoizing results of
+    computationally intensive tasks like node collection and depth calculation.
+
     Attributes:
-        roots (list): Коллекция корневых узлов для анализа
-        max_workers (int): Максимальное количество потоков для параллельной обработки
-        forest_map (dict): Отображение значений узлов на их корневые узлы
-        shared_nodes (dict): Отслеживает значения узлов, которые появляются в нескольких деревьях
-        connections (list): Список связей между корневыми узлами
+        roots (list[Node]): Inherited. List of root nodes for analysis.
+        max_workers (int): Maximum number of threads for parallel processing.
+        _node_cache (dict): Instance cache for `_get_all_nodes_in_tree` results.
+                            Keyed by (id(root_node), tree_idx).
+        _depth_cache (dict): Instance cache for `_get_tree_depth` results.
+                             Keyed by id(root_node). This is used by the original optimized
+                             `_get_tree_depth` if lru_cache is not used directly on the method.
+                             Note: The current implementation of `_get_tree_depth` uses @lru_cache,
+                             making this attribute redundant for that specific method.
+        # forest_map, shared_nodes, connections are inherited and managed by BaseMultiRootAnalyzer.
     """
         
     def __init__(self, roots: list, max_workers: Optional[int] = None):
-        self.roots = roots
+        """
+        Initializes the MultiRootAnalyzerOpt.
+
+        Args:
+            roots (list[Node]): A list of root Node objects.
+            max_workers (Optional[int]): The maximum number of worker threads for concurrent operations.
+                                         If None, it defaults to a value based on CPU count.
+        """
+        super().__init__(roots)
         self.max_workers = max_workers or min(32, (mp.cpu_count() or 1) + 4)
-        self.forest_map = {}
-        self.shared_nodes = {}
-        self.connections = []
         self._node_cache = {}
-        self._depth_cache = {}
+        self._depth_cache = {} # Redundant if all relevant methods are @lru_cache decorated
+
+    def analyze_forest(self) -> dict:
+        """
+        Analyzes the forest in parallel to identify all nodes and shared nodes.
+        Overrides the base class method.
+
+        Returns:
+            dict: A map where keys are node values and values are lists of tree identifiers
+                  (e.g., "Tree_0_RootValue") indicating which trees each node belongs to.
+        """
+        all_nodes_in_trees_map = {}
         
-    def analyze_forest(self):
-        """Параллельный анализ леса деревьев"""
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Параллельно получаем узлы для каждого дерева
-            future_to_tree = {
-                executor.submit(self._get_all_nodes_in_tree_cached, root, i): (root, i) 
-                for i, root in enumerate(self.roots)
+            future_to_tree_info = {
+                executor.submit(self._get_all_nodes_in_tree_cached, root_node, i): (root_node, i)
+                for i, root_node in enumerate(self.roots) if root_node is not None # Skip None roots
             }
             
-            all_nodes_in_trees = {}
-            
-            for future in concurrent.futures.as_completed(future_to_tree):
-                root, tree_idx = future_to_tree[future]
+            for future in concurrent.futures.as_completed(future_to_tree_info):
+                root_node, tree_index = future_to_tree_info[future]
                 try:
-                    tree_nodes = future.result()
-                    tree_name = f"Tree_{tree_idx}_{root.value}"
+                    nodes_set = future.result()
+                    tree_identifier = f"Tree_{tree_index}_{root_node.value}" # root_node here is guaranteed not None
                     
-                    for node_value in tree_nodes:
-                        if node_value not in all_nodes_in_trees:
-                            all_nodes_in_trees[node_value] = []
-                        all_nodes_in_trees[node_value].append(tree_name)
+                    for node_val in nodes_set:
+                        if node_val not in all_nodes_in_trees_map:
+                            all_nodes_in_trees_map[node_val] = []
+                        all_nodes_in_trees_map[node_val].append(tree_identifier)
                         
-                except Exception as exc:
-                    print(f'Tree analysis generated an exception: {exc}')
+                except Exception as e:
+                    # Log this error appropriately in a real application
+                    print(f"Error processing tree {root_node.value if root_node else 'Unknown'} in analyze_forest: {e}")
         
-        # Находим общие узлы
-        self.shared_nodes = {
-            node_value: trees 
-            for node_value, trees in all_nodes_in_trees.items() 
-            if len(trees) > 1
-        }
+        self.shared_nodes.clear()
+        for node_val, tree_list in all_nodes_in_trees_map.items():
+            if len(tree_list) > 1:
+                self.shared_nodes[node_val] = tree_list
         
-        return all_nodes_in_trees
-    
-    @lru_cache(maxsize=1000)
-    def _get_all_nodes_in_tree_cached(self, root, tree_idx: int):
-        """Кэшированное получение всех узлов в дереве"""
-        cache_key = (id(root), tree_idx)
+        return all_nodes_in_trees_map
+
+    @lru_cache(maxsize=1000) # Decorating this method, uses its own shared cache across instances if not careful.
+                             # However, as an instance method, args (like self) make it instance-specific effectively.
+    def _get_all_nodes_in_tree_cached(self, root_node, tree_idx: int) -> set:
+        """
+        Cached retrieval of all nodes in a tree using the instance's `_node_cache`.
+        The `@lru_cache` decorator provides an additional layer of caching if this method
+        is called with the same `root_node` and `tree_idx` multiple times.
+
+        Args:
+            root_node (Node): The root node of the tree.
+            tree_idx (int): The index of the tree, used for cache key uniqueness.
+
+        Returns:
+            set: A set of node values in the tree.
+        """
+        # Instance cache check (manual)
+        cache_key = (id(root_node), tree_idx)
         if cache_key in self._node_cache:
             return self._node_cache[cache_key]
             
-        nodes = self._get_all_nodes_in_tree(root)
+        # If not in instance cache, compute, then store in instance cache.
+        # Calls the overridden _get_all_nodes_in_tree of this class.
+        nodes = self._get_all_nodes_in_tree(root_node)
         self._node_cache[cache_key] = nodes
         return nodes
-    
-    def _get_all_nodes_in_tree(self, root):
-        """Оптимизированное получение всех узлов с использованием deque и защитой от циклов"""
-        if not root:
+
+    def _get_all_nodes_in_tree(self, root_node) -> set:
+        """
+        Optimized retrieval of all nodes in a tree using iterative BFS (deque) with cycle protection.
+        Overrides the base class method.
+
+        Args:
+            root_node (Node): The root node of the tree.
+
+        Returns:
+            set: A set of node values in the tree.
+        """
+        if not root_node:
             return set()
             
-        nodes = set()
-        visited = set()
-        queue = deque([root])
+        nodes_set = set()
+        visited_values = set()
+        processing_queue = deque()
         
-        while queue:
-            node = queue.popleft()
-            if node and node.value not in visited:
-                visited.add(node.value)
-                nodes.add(node.value)
+        if root_node:
+            processing_queue.append(root_node)
+
+        while processing_queue:
+            current_node = processing_queue.popleft()
+            if current_node and current_node.value not in visited_values:
+                visited_values.add(current_node.value)
+                nodes_set.add(current_node.value)
                 
-                if hasattr(node, 'children') and node.children:
-                    queue.extend(node.children)
-        
-        return nodes
-    
-    def find_connections_between_roots(self):
-        """Параллельный поиск связей между корневыми узлами"""
-        # Предварительно получаем все узлы для каждого дерева
-        tree_nodes = {}
+                if hasattr(current_node, 'children') and current_node.children:
+                    for child in current_node.children:
+                        if child:
+                            processing_queue.append(child)
+        return nodes_set
+
+    def find_connections_between_roots(self) -> list:
+        """
+        Finds connections between root nodes in parallel using shared nodes.
+        Overrides the base class method.
+
+        Returns:
+            list[dict]: A list of connection dictionaries, same format as base class.
+        """
+        all_tree_nodes_map = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_idx = {
-                executor.submit(self._get_all_nodes_in_tree_cached, root, i): i
-                for i, root in enumerate(self.roots)
+            future_to_tree_index = {
+                executor.submit(self._get_all_nodes_in_tree_cached, root_node, i): i
+                for i, root_node in enumerate(self.roots) if root_node is not None
             }
             
-            for future in concurrent.futures.as_completed(future_to_idx):
-                idx = future_to_idx[future]
-                tree_nodes[idx] = future.result()
+            for future in concurrent.futures.as_completed(future_to_tree_index):
+                tree_idx = future_to_tree_index[future]
+                try:
+                    all_tree_nodes_map[tree_idx] = future.result()
+                except Exception as e:
+                    print(f"Error getting nodes for tree index {tree_idx} in find_connections: {e}")
+                    all_tree_nodes_map[tree_idx] = set()
+
+        root_indices = [i for i, r in enumerate(self.roots) if r is not None] # Consider only non-None roots
+        tree_pairs = [(i, j) for idx, i in enumerate(root_indices) for j in root_indices[idx + 1:]]
         
-        # Генерируем пары для сравнения
-        pairs = [(i, j) for i in range(len(self.roots)) for j in range(i + 1, len(self.roots))]
-        
-        # Параллельно обрабатываем пары
-        connections = []
+        found_connections = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_pair = {
-                executor.submit(self._find_connection_for_pair, i, j, tree_nodes): (i, j)
-                for i, j in pairs
+            future_to_pair_indices = {
+                executor.submit(self._find_connection_for_pair, pair_indices[0], pair_indices[1], all_tree_nodes_map): pair_indices
+                for pair_indices in tree_pairs
             }
             
-            for future in concurrent.futures.as_completed(future_to_pair):
-                connection = future.result()
-                if connection:
-                    connections.append(connection)
+            for future in concurrent.futures.as_completed(future_to_pair_indices):
+                try:
+                    connection_result = future.result()
+                    if connection_result:
+                        found_connections.append(connection_result)
+                except Exception as e:
+                    # pair_idx_tuple = future_to_pair_indices[future]
+                    # print(f"Error finding connection for pair {pair_idx_tuple}: {e}")
+                    pass
+
+        self.connections = found_connections
+        return self.connections
+
+    def _find_connection_for_pair(self, tree_idx1: int, tree_idx2: int, all_tree_nodes_map: TypingDict[int, set]) -> Optional[dict]:
+        """
+        Helper method to find shared node connections between a single pair of trees.
+
+        Args:
+            tree_idx1 (int): Index of the first tree's root in `self.roots`.
+            tree_idx2 (int): Index of the second tree's root in `self.roots`.
+            all_tree_nodes_map (TypingDict[int, set]): A map of tree index to its set of node values.
+
+        Returns:
+            Optional[dict]: A connection dictionary if common nodes are found, else None.
+        """
+        nodes_for_tree1 = all_tree_nodes_map.get(tree_idx1, set())
+        nodes_for_tree2 = all_tree_nodes_map.get(tree_idx2, set())
         
-        self.connections = connections
-        return connections
-    
-    def _find_connection_for_pair(self, i: int, j: int, tree_nodes: dict):
-        """Находит связь между парой деревьев"""
-        nodes1 = tree_nodes[i]
-        nodes2 = tree_nodes[j]
+        common_nodes_set = nodes_for_tree1.intersection(nodes_for_tree2)
         
-        common_nodes = nodes1.intersection(nodes2)
-        
-        if common_nodes:
+        if common_nodes_set:
+            # self.roots[tree_idx1] and self.roots[tree_idx2] are guaranteed to be non-None by caller logic
             return {
-                'root1': self.roots[i].value,
-                'root2': self.roots[j].value,
-                'common_nodes': list(common_nodes),
+                'root1': self.roots[tree_idx1].value,
+                'root2': self.roots[tree_idx2].value,
+                'common_nodes': list(common_nodes_set),
                 'connection_type': 'shared_nodes'
             }
         return None
-    
-    def get_forest_statistics(self):
-        """Параллельное получение статистики по лесу"""
-        stats = {
+
+    def get_forest_statistics(self) -> dict:
+        """
+        Calculates and returns statistics for the forest in parallel.
+        Overrides the base class method.
+
+        Returns:
+            dict: A dictionary containing forest statistics, same format as base class.
+        """
+        if not self.shared_nodes and self.roots:
+             self.analyze_forest() # Populates self.shared_nodes
+
+        stats_dict = {
             'total_roots': len(self.roots),
-            'trees_info': [],
+            'trees_info': [None] * len(self.roots),
             'shared_nodes': self.shared_nodes
         }
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_idx = {
-                executor.submit(self._get_tree_stats, root, i): i
-                for i, root in enumerate(self.roots)
+            future_to_tree_index = {
+                executor.submit(self._get_tree_stats, root_node, i): i
+                for i, root_node in enumerate(self.roots) # _get_tree_stats will handle None root_node
             }
             
-            tree_stats = [None] * len(self.roots)
-            
-            for future in concurrent.futures.as_completed(future_to_idx):
-                idx = future_to_idx[future]
-                tree_stats[idx] = future.result()
-        
-        stats['trees_info'] = tree_stats
-        return stats
-    
-    def _get_tree_stats(self, root, idx: int):
-        """Получает статистику для одного дерева"""
-        tree_nodes = self._get_all_nodes_in_tree_cached(root, idx)
-        tree_depth = self._get_tree_depth(root)
+            for future in concurrent.futures.as_completed(future_to_tree_index):
+                tree_idx = future_to_tree_index[future]
+                try:
+                    tree_stat_result = future.result()
+                    stats_dict['trees_info'][tree_idx] = tree_stat_result
+                except Exception as e:
+                    root_val = self.roots[tree_idx].value if self.roots[tree_idx] else "Unknown (None root)"
+                    print(f"Error getting stats for tree index {tree_idx} (root: {root_val}): {e}")
+                    stats_dict['trees_info'][tree_idx] = {'root': root_val, 'error': str(e)}
+        return stats_dict
+
+    def _get_tree_stats(self, root_node, tree_idx: int) -> TypingDict:
+        """
+        Helper method to get statistics for a single tree.
+
+        Args:
+            root_node (Node): The root node of the tree.
+            tree_idx (int): The index of the tree (for caching purposes).
+
+        Returns:
+            TypingDict: A dictionary with statistics for the tree.
+        """
+        if root_node is None: # Handle None root gracefully
+            return {
+                'root': None,
+                'nodes_count': 0,
+                'depth': 0,
+                'nodes': []
+            }
+
+        nodes_in_tree = self._get_all_nodes_in_tree_cached(root_node, tree_idx)
+        depth_of_tree = self._get_tree_depth(root_node) # Relies on @lru_cache on _get_tree_depth
         
         return {
-            'root': root.value,
-            'nodes_count': len(tree_nodes),
-            'depth': tree_depth,
-            'nodes': list(tree_nodes)
+            'root': root_node.value,
+            'nodes_count': len(nodes_in_tree),
+            'depth': depth_of_tree,
+            'nodes': list(nodes_in_tree)
         }
-    
+
     @lru_cache(maxsize=500)
-    def _get_tree_depth(self, root):
-        """Оптимизированное вычисление глубины дерева с защитой от циклов"""
-        cache_key = id(root)
-        if cache_key in self._depth_cache:
-            return self._depth_cache[cache_key]
-        
-        if not root:
+    def _get_tree_depth(self, root_node) -> int:
+        """
+        Optimized calculation of tree depth using iterative DFS with cycle protection.
+        Overrides the base class method. Decorated with @lru_cache for memoization.
+
+        Args:
+            root_node (Node): The root node of the tree.
+
+        Returns:
+            int: The depth of the tree. Returns 0 if root_node is None.
+        """
+        if not root_node:
             return 0
         
-        max_depth = 0
-        stack = [(root, 1, frozenset())]  # (node, depth, visited_path)
+        current_max_depth = 0
+        processing_stack = [(root_node, 1, frozenset([root_node.value]))]
         
-        while stack:
-            node, depth, visited = stack.pop()
+        while processing_stack:
+            current_node, depth_at_node, visited_on_path = processing_stack.pop()
+            current_max_depth = max(current_max_depth, depth_at_node)
             
-            if not node or node.value in visited:
-                continue
-            
-            max_depth = max(max_depth, depth)
-            new_visited = visited | {node.value}
-            
-            if hasattr(node, 'children') and node.children:
-                for child in node.children:
-                    if child and child.value not in visited:
-                        stack.append((child, depth + 1, new_visited))
-        
-        self._depth_cache[cache_key] = max_depth
-        return max_depth
-    
-    def find_all_paths_to_node(self, target_value):
-        """Параллельный поиск всех путей до узла"""
-        all_paths = {}
+            if hasattr(current_node, 'children') and current_node.children:
+                for child_node in current_node.children:
+                    if child_node and child_node.value not in visited_on_path:
+                        new_visited_on_path = visited_on_path | {child_node.value}
+                        processing_stack.append((child_node, depth_at_node + 1, new_visited_on_path))
+        return current_max_depth
+
+    def find_all_paths_to_node(self, target_value) -> dict:
+        """
+        Finds all paths to a target node in parallel across all trees.
+        Overrides the base class method.
+
+        Args:
+            target_value: The value of the node to find paths to.
+
+        Returns:
+            dict: A map of tree identifiers to lists of paths, same format as base.
+        """
+        all_found_paths = {}
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_tree = {
-                executor.submit(self._find_paths_in_tree, root, target_value, i): i
-                for i, root in enumerate(self.roots)
+            future_to_tree_index_map = {
+                executor.submit(self._find_paths_in_tree, root_node, target_value): i
+                for i, root_node in enumerate(self.roots) if root_node is not None
             }
             
-            for future in concurrent.futures.as_completed(future_to_tree):
-                tree_idx = future_to_tree[future]
-                paths = future.result()
-                
-                if paths:
-                    tree_name = f"Tree_{tree_idx}_{self.roots[tree_idx].value}"
-                    all_paths[tree_name] = paths
-        
-        return all_paths
-    
-    def _find_paths_in_tree(self, root, target_value, tree_idx: int = 0):
-        """Оптимизированный поиск путей в дереве с защитой от циклов"""
-        if not root:
+            for future in concurrent.futures.as_completed(future_to_tree_index_map):
+                tree_idx = future_to_tree_index_map[future]
+                try:
+                    paths_in_tree = future.result()
+                    if paths_in_tree: # self.roots[tree_idx] is not None due to filter above
+                        tree_name = f"Tree_{tree_idx}_{self.roots[tree_idx].value}"
+                        all_found_paths[tree_name] = paths_in_tree
+                except Exception as e:
+                    root_val = self.roots[tree_idx].value if self.roots[tree_idx] else "Unknown (None root)"
+                    print(f"Error finding paths to {target_value} in tree index {tree_idx} (root {root_val}): {e}")
+        return all_found_paths
+
+    def _find_paths_in_tree(self, root_node, target_value) -> TypingList[TypingList]:
+        """
+        Optimized path finding within a single tree using iterative DFS.
+        Overrides the base class method.
+
+        Args:
+            root_node (Node): The root of the tree to search.
+            target_value: The value of the target node.
+
+        Returns:
+            TypingList[TypingList]: A list of paths, where each path is a list of node values.
+        """
+        if not root_node:
             return []
         
-        all_paths = []
-        stack = [(root, [root.value], {root.value})]  # (node, path, visited)
+        found_paths_list = []
+        # Stack stores: (current_node_object, current_path_list_of_values, visited_on_path_set_of_values)
+        processing_stack = [(root_node, [root_node.value], {root_node.value})]
         
-        while stack:
-            node, path, visited = stack.pop()
+        while processing_stack:
+            current_node, path_list, visited_on_path_set = processing_stack.pop()
             
-            if node.value == target_value:
-                all_paths.append(path.copy())
-                continue
+            if current_node.value == target_value:
+                found_paths_list.append(list(path_list)) # Store a copy
             
-            if hasattr(node, 'children') and node.children:
-                for child in node.children:
-                    if child and child.value not in visited:
-                        new_path = path + [child.value]
-                        new_visited = visited | {child.value}
-                        stack.append((child, new_path, new_visited))
-        
-        return all_paths
-    
-    def find_shortest_path_to_node(self, target_value):
-        """Находит кратчайший путь до узла среди всех деревьев"""
-        all_paths = self.find_all_paths_to_node(target_value)
-        
-        if not all_paths:
-            return None
-        
-        shortest_path = None
-        shortest_length = float('inf')
-        shortest_tree = None
-        
-        for tree_name, paths in all_paths.items():
-            for path in paths:
-                if len(path) < shortest_length:
-                    shortest_length = len(path)
-                    shortest_path = path
-                    shortest_tree = tree_name
-        
-        return {
-            'tree': shortest_tree,
-            'path': shortest_path,
-            'length': shortest_length
-        }
-    
-    def find_all_paths_between_nodes(self, start_value, end_value):
-        """Параллельный поиск всех путей между двумя узлами в лесу"""
-        all_paths = {}
+            if hasattr(current_node, 'children') and current_node.children:
+                # Iterate in reverse to mimic recursive DFS call order more closely if desired,
+                # though for finding all paths, order of exploring children doesn't change the final set of paths.
+                for child_node in reversed(current_node.children):
+                    if child_node and child_node.value not in visited_on_path_set:
+                        new_path_list = path_list + [child_node.value]
+                        new_visited_on_path_set = visited_on_path_set | {child_node.value}
+                        processing_stack.append((child_node, new_path_list, new_visited_on_path_set))
+        return found_paths_list
+
+    def find_shortest_path_to_node(self, target_value) -> Optional[dict]:
+        # Inherited from BaseMultiRootAnalyzer, calls self.find_all_paths_to_node (which is overridden here).
+        return super().find_shortest_path_to_node(target_value)
+
+    def find_all_paths_between_nodes(self, start_value, end_value) -> dict:
+        """
+        Finds all paths between two nodes in parallel across all trees.
+        Overrides the base class method.
+
+        Args:
+            start_value: The value of the starting node.
+            end_value: The value of the ending node.
+
+        Returns:
+            dict: A map of tree identifiers to lists of paths, same format as base.
+        """
+        all_found_paths = {}
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_tree = {
-                executor.submit(self._find_paths_between_nodes_in_tree, root, start_value, end_value, i): i
-                for i, root in enumerate(self.roots)
+            future_to_tree_index_map = {
+                executor.submit(self._find_paths_between_nodes_in_tree, root_node, start_value, end_value): i
+                for i, root_node in enumerate(self.roots) if root_node is not None
             }
             
-            for future in concurrent.futures.as_completed(future_to_tree):
-                tree_idx = future_to_tree[future]
-                paths = future.result()
-                
-                if paths:
-                    tree_name = f"Tree_{tree_idx}_{self.roots[tree_idx].value}"
-                    all_paths[tree_name] = paths
-        
-        return all_paths
-    
-    def _find_paths_between_nodes_in_tree(self, root, start_value, end_value, tree_idx: int = 0):
-        """Оптимизированный поиск путей между двумя узлами в конкретном дереве"""
-        if not root:
+            for future in concurrent.futures.as_completed(future_to_tree_index_map):
+                tree_idx = future_to_tree_index_map[future]
+                try:
+                    paths_in_tree = future.result()
+                    if paths_in_tree: # self.roots[tree_idx] is not None
+                        tree_name = f"Tree_{tree_idx}_{self.roots[tree_idx].value}"
+                        all_found_paths[tree_name] = paths_in_tree
+                except Exception as e:
+                    root_val = self.roots[tree_idx].value if self.roots[tree_idx] else "Unknown (None root)"
+                    print(f"Error finding paths between {start_value}-{end_value} in tree index {tree_idx} (root {root_val}): {e}")
+        return all_found_paths
+
+    def _find_paths_between_nodes_in_tree(self, root_node, start_value, end_value) -> TypingList[TypingList]:
+        """
+        Optimized path finding between two nodes in a single tree using iterative DFS.
+        Paths collected are segments from `start_value` to `end_value`.
+        Overrides the base class method.
+
+        Args:
+            root_node (Node): The root of the tree.
+            start_value: The value of the starting node.
+            end_value: The value of the ending node.
+
+        Returns:
+            TypingList[TypingList]: A list of paths, each path a list of node values.
+        """
+        if not root_node:
             return []
         
-        all_paths = []
-        stack = [(root, [root.value], {root.value}, root.value == start_value)]
-        # (node, path, visited, found_start)
+        found_paths_list = []
+        initial_found_start = (root_node.value == start_value)
+        # Stack: (current_node, current_path_list, visited_on_path_set, found_start_in_current_path_bool)
+        processing_stack = [(root_node, [root_node.value], {root_node.value}, initial_found_start)]
         
-        while stack:
-            node, path, visited, found_start = stack.pop()
+        while processing_stack:
+            current_node, path_list, visited_on_path_set, found_start_in_path = processing_stack.pop()
+            current_val = current_node.value
             
-            # Проверяем, нашли ли начальный узел
-            if node.value == start_value:
-                found_start = True
+            if not found_start_in_path and current_val == start_value:
+                found_start_in_path = True
+                # The path now effectively starts from here for path segment extraction purposes.
+                # If current_val is start_value, path_list up to this point is the prefix from root.
+                # We want the segment from start_value.
+
+            if current_val == end_value and found_start_in_path:
+                try:
+                    # Find the first index of start_value in the current accumulated path_list.
+                    path_start_index = -1
+                    for i in range(len(path_list)):
+                        if path_list[i] == start_value:
+                            path_start_index = i
+                            break
+
+                    if path_start_index != -1: # If start_value was indeed found in the path
+                        path_segment = path_list[path_start_index:] # Slice from start_value to current (end_value)
+                        if path_segment not in found_paths_list:
+                             found_paths_list.append(path_segment)
+                except ValueError:
+                    pass # Should not occur if logic is sound
             
-            # Если нашли конечный узел и уже прошли через начальный
-            if node.value == end_value and found_start:
-                all_paths.append(path.copy())
-                continue
-            
-            if hasattr(node, 'children') and node.children:
-                for child in node.children:
-                    if child and child.value not in visited:
-                        new_path = path + [child.value]
-                        new_visited = visited | {child.value}
-                        stack.append((child, new_path, new_visited, found_start))
-        
-        return all_paths
-    
-    def print_forest_statistics(self):
-        """Выводит статистику по лесу деревьев"""
-        stats = self.get_forest_statistics()
-        print("Forest Statistics:")
-        print(f"Total Roots: {stats['total_roots']}")
-        for tree_info in stats['trees_info']:
-            print(f"Tree {tree_info['root']}: {tree_info['nodes_count']} nodes, depth {tree_info['depth']}")
-    
-    def print_shared_nodes(self):
-        """Выводит общие узлы"""
-        self.analyze_forest()
-        print("Shared Nodes:")
-        for node_value, roots in self.shared_nodes.items():
-            print(f"{node_value}: {roots}")
-    
-    def print_connections_between_roots(self):
-        """Выводит связи между корневыми узлами"""
-        connections = self.find_connections_between_roots()
-        print("Connections Between Roots:")
-        for connection in connections:
-            print(f"{connection['root1']} - {connection['root2']}: {connection['common_nodes']}")
-    
-    def print_all_paths_to_node(self, target_value):
-        """Выводит все пути до указанного узла"""
-        paths = self.find_all_paths_to_node(target_value)
-        print(f"\nAll paths to node '{target_value}':")
-        if not paths:
-            print(f"Node '{target_value}' not found in any tree.")
-            return
-        
-        for tree_name, tree_paths in paths.items():
-            print(f"\n{tree_name}:")
-            for i, path in enumerate(tree_paths, 1):
-                print(f"  Path {i}: {' -> '.join(map(str, path))}")
-    
-    def print_shortest_path_to_node(self, target_value):
-        """Выводит кратчайший путь до узла"""
-        shortest = self.find_shortest_path_to_node(target_value)
-        
-        if not shortest:
-            print(f"Node '{target_value}' not found in any tree.")
-            return
-        
-        print(f"\nShortest path to node '{target_value}':")
-        print(f"Tree: {shortest['tree']}")
-        print(f"Path: {' -> '.join(map(str, shortest['path']))}")
-        print(f"Length: {shortest['length']} nodes")
-    
-    def print_paths_between_nodes(self, start_value, end_value):
-        """Выводит все пути между двумя узлами"""
-        paths = self.find_all_paths_between_nodes(start_value, end_value)
-        print(f"\nAll paths from '{start_value}' to '{end_value}':")
-        
-        if not paths:
-            print(f"No paths found from '{start_value}' to '{end_value}'.")
-            return
-        
-        for tree_name, tree_paths in paths.items():
-            print(f"\n{tree_name}:")
-            for i, path in enumerate(tree_paths, 1):
-                print(f"  Path {i}: {' -> '.join(map(str, path))}")
+            if hasattr(current_node, 'children') and current_node.children:
+                for child_node in reversed(current_node.children):
+                    if child_node and child_node.value not in visited_on_path_set:
+                        new_path_list = path_list + [child_node.value] # Extend current path
+                        new_visited_on_path_set = visited_on_path_set | {child_node.value}
+                        processing_stack.append((child_node, new_path_list, new_visited_on_path_set, found_start_in_path))
+        return found_paths_list
 
+    # Print methods were removed in a previous refactoring step.
+    # The __main__ block below is for testing this file directly.
 
-if __name__ == '__main__':
-    from tree_construction import Node
-
-    root_1 = Node("A")
-    root_2 = Node("B")
-    root_3 = Node("C")
-
-    node_d = Node("D")
-    node_e = Node("E")
-    node_f = Node("F")
-    node_g = Node("G")
-    node_k = Node("K")
-    node_l = Node("L")
-    node_m = Node("M")
-    node_n = Node("N")
-    node_o = Node("O")
-
-    root_1.add_child(node_d)
-    #root_1.add_child(node_e)
-    #root_1.add_child(node_f)
-    #root_2.add_child(node_g)
-    root_2.add_child(node_k)
-    root_3.add_child(node_l)
-    root_3.add_child(node_m)
-    root_3.add_child(node_n)
-
-    node_d.add_child(node_e)
-    node_e.add_child(node_f)
-    node_f.add_child(node_g)
-    node_f.add_child(node_d)
-    node_e.add_child(node_g)
-    #node_f.add_child(node_g)
-    #node_f.add_child(node_k)
-    #node_d.add_child(node_o)
-    #node_o.add_child(node_g)
-    #node_o.add_child(node_m)
-    
-    start_time = time.time()
-    # Анализ нескольких корней
-    multi_analyzer = MultiRootAnalyzerOpt([root_1, root_2, root_3])
-    multi_analyzer.print_forest_statistics()
-    multi_analyzer.print_shared_nodes()
-    multi_analyzer.print_connections_between_roots()
-    multi_analyzer.print_forest_statistics()
-    multi_analyzer.print_shared_nodes()
-    multi_analyzer.print_connections_between_roots()
-    multi_analyzer.print_paths_between_nodes("A", "G")
-    multi_analyzer.print_shortest_path_to_node("G")
-    print("\n")
-    end_time = time.time()
-    print(f"\nВремя выполнения оптимизированного анализа: {end_time - start_time:.4f} секунд")
-    
-    print("\n")
-    # Визуализация леса
-    try:
-        from visualize_forest_connection import VisualizeForest
-        VisualizeForest(multi_analyzer).visualize_forest_connections()
-    except ImportError:
-        print("Модуль визуализации недоступен")
+# The if __name__ == '__main__' block has been moved to examples/example_multi_root_analyzer_optimized.py

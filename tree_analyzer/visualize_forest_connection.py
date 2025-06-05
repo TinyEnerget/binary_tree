@@ -1,62 +1,73 @@
-# Описание: Класс работает в связке с MultiRootAnalyzer 
-# и использует его данные для визуализации.
-# print_tree() - Статический метод для печати дерева
-# Как работает:
-#Рекурсивно обходит дерево
-#Использует отступы (level * 4 пробела) для показа уровня вложенности
-#Применяет ASCII-символы для красивого отображения:
-#├── для промежуточных узлов
-#└── для последнего узла на уровне
-#2. visualize_forest_connections() - Главный метод визуализации
+# Description: This class works in conjunction with a MultiRootAnalyzer instance
+# and uses its data for visualization purposes.
+#
+# Key functionalities:
+# 1. (Removed) Static print_tree() method - Tree printing is now handled by Node.print_tree().
+# 2. visualize_forest_connections() - The main method for visualizing the forest,
+#    displaying each tree structure and the connections between them based on shared nodes.
 
 # Imports
+# (No specific imports are listed, but would typically include MultiRootAnalyzer types if type hinting was more extensive)
+# from .multi_root_analyzer import BaseMultiRootAnalyzer # Example
 
 class VisualizeForest:
+    """
+    A class responsible for visualizing a forest of trees, including their structures
+    and connections, based on data from a MultiRootAnalyzer instance.
+    """
     def __init__(self, analyzer):
+        """
+        Initializes the VisualizeForest instance.
+
+        Args:
+            analyzer: An instance of a class compatible with BaseMultiRootAnalyzer,
+                      which has already processed a list of root nodes. This analyzer
+                      instance should provide access to `roots` and `connections`
+                      (or a method to generate connections like `find_connections_between_roots`).
+        """
         self.analyzer = analyzer
 
-    @staticmethod    
-    def print_tree(node, level=0, prefix="Root: ", path=None):
-        if path is None:
-            path = []
-        
-        if node is not None:
-            # Проверяем циклы
-            if node.value in path:
-                cycle_start = path.index(node.value)
-                cycle_path = " -> ".join(map(str, path[cycle_start:] + [node.value]))
-                print(" " * (level * 4) + prefix + str(node.value) + f" [CYCLE: {cycle_path}]")
-                return
-            
-            print(" " * (level * 4) + prefix + str(node.value))
+    # The static print_tree method was removed. Node's instance method (Node.print_tree) is now used.
 
-            if node.children:
-                # Добавляем текущий узел в путь
-                new_path = path + [node.value]
-                # Рекурсивно выводим детей
-                for i, child in enumerate(node.children):
-                    extension = "├── " if i < len(node.children) - 1 else "└── "
-                    VisualizeForest.print_tree(child, level + 1, extension, new_path)
+    def visualize_forest_connections(self): # Removed unused level and prefix parameters
+        """
+        Visualizes the entire forest structure and the connections between trees.
 
-    def visualize_forest_connections(self, level=0, prefix="Root: "):
-        """Визуализирует связи в лесу деревьев"""
-        print("=== ВИЗУАЛИЗАЦИЯ ЛЕСА ===\n")
+        This method iterates through each tree in the forest, printing its structure
+        using the `Node.print_tree()` method. It then lists the connections
+        (based on shared nodes) found between different trees in the forest.
+        """
+        print("=== FOREST VISUALIZATION ===\n")
         roots = self.analyzer.roots
+
+        # Ensure connections are populated if the analyzer hasn't run the relevant method yet.
+        # The `connections` attribute is expected to be populated by `find_connections_between_roots`.
+        if not hasattr(self.analyzer, 'connections') or not self.analyzer.connections:
+            if hasattr(self.analyzer, 'find_connections_between_roots'):
+                self.analyzer.find_connections_between_roots() # Populate connections if possible
+
         connections = getattr(self.analyzer, 'connections', [])
 
-        # Print each root and its connections
-        for i, root in enumerate(roots):
-            print(f"Дерево {i+1} (корень: {root.value}):")
-            VisualizeForest.print_tree(root, level, prefix)
-            print()
+        # Print each tree structure
+        for i, root_node in enumerate(roots):
+            if root_node is None:
+                print(f"Warning: Tree {i+1} has a None root and will be skipped.")
+                print()
+                continue
 
-        # Analysis of connections and print them
+            print(f"Tree {i+1} (Root: {root_node.value}):")
+            # Call the Node's instance method print_tree.
+            # It uses its own default parameters for level and prefix for a root.
+            root_node.print_tree()
+            print() # Adds a blank line for better separation between trees
+
+        # Print the analysis of connections
         if connections:
-            print("НАЙДЕННЫЕ СВЯЗИ:")
+            print("FOUND CONNECTIONS:")
             for conn in connections:
-                print(f"{conn['root1']} ↔ {conn['root2']}")
-                print(f"Общие узлы: {', '.join(conn['common_nodes'])}")
+                print(f"  {conn.get('root1', 'N/A')} ↔ {conn.get('root2', 'N/A')}") # Using .get for safer access
+                print(f"  Shared nodes: {', '.join(map(str, conn.get('common_nodes', [])))}")
                 print()
         else:
-            print("Связей между деревьями не найдено")
+            print("No connections found between trees.")
 
