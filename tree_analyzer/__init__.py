@@ -21,7 +21,7 @@ try:
     from multi_root_analyzer import MultiRootAnalyzer
     from tree_construction import Node
     from visualize_forest_connection import VisualizeForest
-except ImportError as e:
+except (ImportError, ValueError, Exception) as e:
     print(f"Ошибка импорта: {e}")
     # Попробуем относительные импорты
     try:

@@ -1,6 +1,7 @@
 import random
 import string
 import numpy as np
+from typing import Optional
 # Assuming Node is correctly found relative to the project structure when tests are run.
 # This relies on utils/tests.py (or another runner) adding the parent directory to sys.path.
 from tree_analyzer import Node # This should resolve if project root is in sys.path
@@ -118,7 +119,6 @@ class TreeGenerator:
                 created_nodes_count += 1
 
         return root
-
     def create_cyclic_tree(self, num_nodes: int, cycle_probability: float = 0.1) -> Optional[Node]:
         """
         Creates a tree that may contain cycles, for testing cycle detection algorithms.

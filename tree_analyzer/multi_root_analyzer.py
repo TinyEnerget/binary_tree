@@ -323,7 +323,7 @@ class BaseMultiRootAnalyzer:
         dfs(root_node, [], set()) # Initial call with empty path and visited set for the path
         return all_paths_list
     
-    def find_shortest_path_to_node(self, target_value) -> dict or None:
+    def find_shortest_path_to_node(self, target_value) -> dict | None:
         """
         Finds the shortest path to a node with the target value from any root in the forest.
 
@@ -355,8 +355,7 @@ class BaseMultiRootAnalyzer:
                         'length': current_shortest_length
                     }
         
-        return shortest_path_info
-    
+        return shortest_path_info    
     def find_all_paths_between_nodes(self, start_value, end_value) -> dict:
         """
         Finds all paths between two nodes (identified by start_value and end_value)
