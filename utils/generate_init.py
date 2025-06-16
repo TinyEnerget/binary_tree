@@ -137,7 +137,7 @@ def generate_init(package_dir: Path, output_path: Path, package_name: str, versi
     sys.path.pop(0)
 
 if __name__ == '__main__':
-    package_dir = Path('model_processing')
+    package_dir = Path('C://Users//Vlad Titov//Desktop//Work//binary_tree//model_processing')
     output_path = package_dir / '__init__.py'
     package_name = 'model_processing'
     generate_init(package_dir, output_path, package_name)
