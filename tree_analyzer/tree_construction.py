@@ -62,5 +62,5 @@ if __name__ == '__main__':
     root.add_child(child1)
     root.add_child(child2)
     root.print_tree()
-    print(root.children[0].value)
+    print(root.value)
 

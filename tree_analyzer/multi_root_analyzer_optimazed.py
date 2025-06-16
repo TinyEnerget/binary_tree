@@ -154,7 +154,7 @@ class MultiRootAnalyzerOpt:
         stats = {
             'total_roots': len(self.roots),
             'trees_info': [],
-            'shared_nodes': self.shared_nodes
+            'shared_nodes': self.shared_nodes if hasattr(self, 'shared_nodes') else None
         }
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -171,7 +171,6 @@ class MultiRootAnalyzerOpt:
         
         stats['trees_info'] = tree_stats
         return stats
-    
     def _get_tree_stats(self, root, idx: int):
         """Получает статистику для одного дерева"""
         tree_nodes = self._get_all_nodes_in_tree_cached(root, idx)
