@@ -96,7 +96,7 @@ class GraphCreator:
                     print(f"{edge[0][:6]} --- {edge[1][:6]}")
                     printed.add(edge)
 
-    def visualize_graph_with_plot(self) -> None:
+    def visualize_graph_with_plot(self, graph = None) -> None:
         """
         Визуализирует граф.
         :param graph: словарь графа
@@ -124,7 +124,7 @@ class GraphCreator:
 
 
 if __name__ == "__main__":
-    model_path = "C:\\Users\\Vlad Titov\\Desktop\\Work\\binary_tree\\model_processing\\available_modification\\converted.json"
+    model_path = "model_processing\\available_modification\\converted.json"
     out_path = "res\\output_tree.json"
     graph_creator = GraphCreator(model_path, out_path)
     graph_creator.model_to_tree()
