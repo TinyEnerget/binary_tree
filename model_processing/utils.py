@@ -11,7 +11,7 @@ def load_json(file_path: str) -> Dict[str, Any]:
 def save_json(file_path: str, data: Dict[str, Any]) -> None:
     """Сохраняет данные в JSON-файл."""
     with open(file_path, 'w', encoding='utf-8') as file:
-        json.dump(data, file, indent=2, ensure_ascii=False)
+        json.dump(data, file, indent=6, ensure_ascii=False)
 
 def rewrite_nodes(model: dict) -> dict:
     nodes = {}

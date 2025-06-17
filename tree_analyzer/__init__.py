@@ -20,6 +20,7 @@ try:
     from multi_root_analyzer_optimazed import MultiRootAnalyzerOpt
     from multi_root_analyzer import MultiRootAnalyzer
     from tree_construction import Node
+    from tree_creator import TreeCreator
     from visualize_forest_connection import VisualizeForest
 except ImportError as e:
     print(f"Ошибка импорта: {e}")
@@ -28,6 +29,7 @@ except ImportError as e:
         from .multi_root_analyzer_optimazed import MultiRootAnalyzerOpt
         from .multi_root_analyzer import MultiRootAnalyzer
         from .tree_construction import Node
+        from .tree_creator import TreeCreator
         from .visualize_forest_connection import VisualizeForest
     except ImportError as e2:
         print(f"Ошибка относительного импорта: {e2}")
@@ -40,5 +42,6 @@ __all__ = [
     'MultiRootAnalyzer',
     'MultiRootAnalyzerOpt',
     'Node', 
+    'TreeCreator',
     'VisualizeForest'
 ]

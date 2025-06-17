@@ -3,8 +3,7 @@ import os
 # Добавляем родительскую директорию в путь
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tree_analyzer import MultiRootAnalyzer, VisualizeForest
-from tree import TreeCreator
+from tree_analyzer import MultiRootAnalyzer, VisualizeForest, TreeCreator
 
 model_path = 'C:\\Users\\Vlad Titov\\Desktop\\Work\\binary_tree\\model_processing\\available_modification\\converted.json'
 out_path = "output.json"

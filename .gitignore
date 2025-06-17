@@ -33,3 +33,6 @@ tree_analyzer/__pycache__/visualize_forest_connection.cpython-312.pyc
 tree_analyzer/__pycache__/tree_construction.cpython-312.pyc
 tree_analyzer/__pycache__/__init__.cpython-312.pyc
 tree_analyzer/__pycache__/__init__.cpython-312.pyc
+graph.json
+res/output_graph.json
+.gitignore
