@@ -17,14 +17,14 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 try:
-    from multi_root_graph_analyzer import UndirectedGraphAnalyzer
+    from undirected_graph_analyzer import UndirectedGraphAnalyzer
     from graph_creator import GraphCreator
     from graph_visualizer import GraphVisualizer
 except ImportError as e:
     print(f"Ошибка импорта: {e}")
     # Попробуем относительные импорты
     try:
-        from .multi_root_graph_analyzer import UndirectedGraphAnalyzer
+        from .undirected_graph_analyzer import UndirectedGraphAnalyzer
         from .graph_creator import GraphCreator
         from .graph_visualizer import GraphVisualizer
     except ImportError as e2:
