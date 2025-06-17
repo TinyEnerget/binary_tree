@@ -6,7 +6,7 @@
 """
 import json
 from pathlib import Path
-from typing import Dict, Any, List as TypingList, Optional # Added Optional
+from typing import Dict, Any, List, Set as TypingList, Optional # Added Optional
 import sys
 import os
 # Добавляем родительскую директорию в путь
@@ -163,7 +163,7 @@ class TreeCreator:
             return []
 
         # Доступ к данным через атрибуты объекта NetworkAnalysisResult
-        tree_dict: Dict[str, Dict[str, List[str]]] = self.result.tree
+        tree_dict: Dict[str, Dict[str, Optional[str]]] = self.result.tree
         all_node_ids: TypingList[str] = self.result.nodes
         root_ids_from_result: TypingList[str] = self.result.roots
 
@@ -197,7 +197,7 @@ class TreeCreator:
         # Логика автоматического определения корней, если они не были заданы явно
         if not actual_roots and all_node_ids:
              logger.info("Корневые узлы не были предоставлены в NetworkAnalysisResult или не найдены. Попытка автоматического определения. / Root nodes were not provided in NetworkAnalysisResult or not found. Attempting automatic detection.")
-             all_children_ids: Set[str] = set()
+             all_children_ids: Optional[str] = set()
              for connection_info in tree_dict.values():
                  all_children_ids.update(connection_info.get('child', []))
 

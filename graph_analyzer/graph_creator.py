@@ -7,13 +7,14 @@
 """
 import json
 from pathlib import Path
-from typing import Dict, Any, Set, Optional as TypingOptional # Добавлены Set и Optional
+from typing import Dict, Any, Set, Optional #as TypingOptional # Добавлены Set и Optional
 from collections import defaultdict
 import sys
 import os
 # Добавляем родительскую директорию в путь
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from model_processing import NetworkAnalyzer
+from model_processing import NetworkModelError
 from model_processing.models import NetworkAnalysisResult # Импорт NetworkAnalysisResult
 
 import logging
@@ -54,7 +55,7 @@ class GraphCreator:
                                                   Can be provided during initialization or obtained
                                                   by calling `_ensure_analysis_result()`.
     """
-    def __init__(self, out_path: str, model_path: TypingOptional[str] = None, analysis_result: TypingOptional[NetworkAnalysisResult] = None):
+    def __init__(self, out_path: str, model_path: Optional[str] = None, analysis_result: Optional[NetworkAnalysisResult] = None):
         """
         Инициализирует объект GraphCreator.
 
@@ -483,5 +484,5 @@ if __name__ == "__main__":
     graph_creator.model_to_tree()
     graph = graph_creator.create_graph()
     #graph_creator.visualize_graph_with_print(graph)
-    #graph_creator.visualize_graph_with_plot()
+    graph_creator.visualize_graph_with_plot()
         
