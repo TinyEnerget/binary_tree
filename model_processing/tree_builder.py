@@ -1,6 +1,7 @@
 from typing import Dict, Any
 from .models import NetworkModel, NetworkElement, ElementType
-
+import logging
+logger = logging.getLogger(__name__)
 class NetworkTreeBuilder:
     """Построитель дерева электрической сети.
 
@@ -56,21 +57,24 @@ class NetworkTreeBuilder:
                 - 'nodes': список всех идентификаторов элементов.
                 - 'edges': список кортежей (source, target), представляющих связи.
         """
-        roots = self.model.get_root_elements()
         graph = self.model.get_undirected_graph()
-        edges = []
-        
-        # Формируем список рёбер, избегая дублирования
-        seen_edges = set()
-        for source, targets in graph.items():
-            for target in targets:
-                edge = tuple(sorted([source, target]))  # Сортируем, чтобы избежать (A, B) и (B, A)
-                if edge not in seen_edges:
-                    seen_edges.add(edge)
-                    edges.append((source, target))
-        
-        return {
-            "roots": roots,
-            "nodes": list(self.model.elements.keys()),
-            "edges": edges
-        }
+        logger.debug("Построен ненаправленный граф: %d узлов", len(graph))
+        return graph
+        #roots = self.model.get_root_elements()
+        #graph = self.model.get_undirected_graph()
+        #edges = []
+        #
+        ## Формируем список рёбер, избегая дублирования
+        #seen_edges = set()
+        #for source, targets in graph.items():
+        #    for target in targets:
+        #        edge = tuple(sorted([source, target]))  # Сортируем, чтобы избежать (A, B) и (B, A)
+        #        if edge not in seen_edges:
+        #            seen_edges.add(edge)
+        #            edges.append((source, target))
+        #
+        #return {
+        #    #"roots": roots,
+        #    "nodes": list(self.model.elements.keys()),
+        #    "edges": edges
+        #}

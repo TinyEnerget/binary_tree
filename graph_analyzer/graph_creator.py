@@ -1,12 +1,12 @@
 import json
 from pathlib import Path
-from typing import Dict, Any
-from collections import defaultdict
+from typing import Dict, Any, List, Tuple
 import sys
 import os
+
 # Добавляем родительскую директорию в путь
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from model_processing import NetworkAnalyzer
+from model_processing import NetworkAnalyzer, NetworkModel, NetworkTreeBuilder
 
 import logging
 # Настройка логирования
@@ -14,14 +14,31 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class GraphCreator:
+    """Класс для создания ненаправленного графа из модели электрической сети.
+
+    Attributes:
+        model_path (Path): Путь к входному JSON-файлу модели.
+        out_path (Path): Путь для сохранения результирующего графа.
+        result (Dict[str, Any]): Результат построения графа.
+    """
     def __init__(self, model_path: str, out_path: str):
+        """Инициализирует GraphCreator.
+
+        Args:
+            model_path (str): Путь к JSON-файлу модели.
+            out_path (str): Путь для сохранения результирующего графа.
+
+        Raises:
+            FileNotFoundError: Если входной файл не существует.
+        """
         input_file = Path(model_path)
         output_file = Path(out_path)
         if not input_file.exists():
             logger.error("Входной файл %s не найден", input_file)
+            raise FileNotFoundError(f"Входной файл {input_file} не найден")
         self.model_path = input_file
         self.out_path = output_file
-        pass
+        self.result: Dict[str, Any] = {}
     
     @staticmethod
     def save_json(file_path: Path, data: Dict[str, Any]) -> None:
@@ -46,39 +63,46 @@ class GraphCreator:
 
         graph = {node: set(neighbors) for node, neighbors in adjacency_list.items()}
         return graph
-    def model_to_tree(self) -> Dict[str, Any]:
-        """
-        Конвертирует модель в словарь дерева.
-        :param model_path: путь к модели
-        :param out_path: путь к выходному файлу
-        :return: словарь дерева
+    def model_to_graph(self) -> Dict[str, Any]:
+        """Конвертирует модель в ненаправленный граф.
+
+        Returns:
+            Dict[str, Any]: Словарь с полями:
+                - 'nodes': список идентификаторов узлов.
+                - 'edges': список кортежей (source, target), представляющих рёбра.
+
+        Raises:
+            Exception: Если произошла ошибка при анализе модели.
         """
         try:
-            logger.info("Анализ модели %s", self.model_path)
-            self.result: Dict[str, Any] = NetworkAnalyzer.analyze_network(str(self.model_path), str(self.out_path))
-            logger.info("Анализ завершен. Результаты сохранены в %s", self.out_path)
+            logger.info("Анализ модели %s для построения графа", self.model_path)
+            # Загружаем модель
+            model_data = NetworkAnalyzer.load_model(str(self.model_path))
+            # Создаем модель сети
+            network_model = NetworkModel(model_data)
+            # Строим ненаправленный граф
+            tree_builder = NetworkTreeBuilder(network_model)
+            self.result = tree_builder.build_undirected_graph()
+            # Сохраняем результат
+            NetworkAnalyzer.save_tree(self.result, str(self.out_path))
+            logger.info("Построение графа завершено. Результаты сохранены в %s", self.out_path)
         except Exception as e:
-            logger.error("Ошибка при анализе модели: %s", e)
+            logger.error("Ошибка при построении графа: %s", e)
             raise e
-        return
+        finally:
+            logger.info("Анализ модели завершен")
+        
+        return self.result
     
     def create_graph(self) -> Dict[str, Any]:
+        """Создает и возвращает структуру ненаправленного графа.
+
+        Returns:
+            Dict[str, Any]: Словарь с полями 'nodes' и 'edges', представляющий граф.
         """
-        Создает граф из словаря дерева.
-        :param tree_dict: словарь дерева
-        :return: словарь графа
-        """
-
-        # Построение графа
-        undirected_graph = defaultdict(set)
-
-        for parent, info in self.result["tree"].items():
-            for child in info["child"]:
-                undirected_graph[parent].add(child)
-                undirected_graph[child].add(parent)  # добавляем обратное ребро
-
-        GraphCreator.save_json(self.out_path, undirected_graph)
-        return undirected_graph
+        if not self.result:
+            self.model_to_graph()
+        return self.result
     
     def visualize_graph_with_print(self, graph: Dict[str, Any]) -> None:
         """
@@ -124,11 +148,14 @@ class GraphCreator:
 
 
 if __name__ == "__main__":
-    model_path = "model_processing\\available_modification\\converted.json"
-    out_path = "res\\output_tree.json"
+    model_path = 'model_processing\\available_modification\\converted.json'
+    out_path = "output_graph.json"
     graph_creator = GraphCreator(model_path, out_path)
-    graph_creator.model_to_tree()
     graph = graph_creator.create_graph()
-    #graph_creator.visualize_graph_with_print(graph)
-    #graph_creator.visualize_graph_with_plot()
+    print(f"Граф создан: {len(graph)} узлов, "
+          f"{sum(len(connections) for connections in graph.values()) // 2} рёбер")
+    from graph_visualizer import GraphVisualizer
+    graph_visualizer = GraphVisualizer(graph)
+    graph_visualizer.draw_graph()
+
         

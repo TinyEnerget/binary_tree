@@ -204,17 +204,29 @@ class NetworkModel:
         """
         undirected_graph: Dict[str, List[str]] = {elem_id: [] for elem_id in self.elements}
         
-        for element_id, element in self.elements.items():
-            for node in element.nodes:
-                # Находим все элементы, подключенные к этому узлу
-                connected_elements = self.node_connections.get(str(node), [])
+        for node_id, connected_elements in self.node_connections.items():
+            # Находим шины среди подключённых элементов
+            bus_elements = [
+                elem_id for elem_id in connected_elements
+                if self.elements[elem_id].element_type == ElementType.BUS
+            ]
+            # Для каждой шины добавляем связи с другими элементами на этом узле
+            for bus_id in bus_elements:
                 for connected_id in connected_elements:
-                    if connected_id != element_id and connected_id not in undirected_graph[element_id]:
-                        undirected_graph[element_id].append(connected_id)
-                        if element_id not in undirected_graph[connected_id]:
-                            undirected_graph[connected_id].append(element_id)
+                    if connected_id != bus_id:  # Исключаем автосоединения
+                        # Добавляем связь шина → элемент
+                        if connected_id not in undirected_graph[bus_id]:
+                            undirected_graph[bus_id].append(connected_id)
+                        # Добавляем обратную связь элемент → шина
+                        if bus_id not in undirected_graph[connected_id]:
+                            undirected_graph[connected_id].append(bus_id)
         
-        logger.debug("Сформирован ненаправленный граф: %d узлов", len(undirected_graph))
+        # Удаляем пустые списки связей для упрощения
+        undirected_graph = {k: v for k, v in undirected_graph.items() if v}
+        
+        logger.debug("Сформирован ненаправленный граф: %d узлов с непустыми связями, %d рёбер",
+                     len(undirected_graph),
+                     sum(len(connections) for connections in undirected_graph.values()) // 2)
         return undirected_graph
     
     def get_element(self, element_id: str) -> Optional[NetworkElement]:
