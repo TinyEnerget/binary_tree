@@ -194,6 +194,28 @@ class NetworkModel:
         #        ]
             #filtered_connections = [elem_id for elem_id in connected_elements if elem_id != bus_id]
             #self.node_connections[bus_id] = filtered_connections
+
+    def get_undirected_graph(self) -> Dict[str, List[str]]:
+        """Формирует ненаправленный граф на основе соединений узлов.
+
+        Returns:
+            Dict[str, List[str]]: Словарь, где ключ — идентификатор элемента,
+                                  значение — список идентификаторов связанных элементов.
+        """
+        undirected_graph: Dict[str, List[str]] = {elem_id: [] for elem_id in self.elements}
+        
+        for element_id, element in self.elements.items():
+            for node in element.nodes:
+                # Находим все элементы, подключенные к этому узлу
+                connected_elements = self.node_connections.get(str(node), [])
+                for connected_id in connected_elements:
+                    if connected_id != element_id and connected_id not in undirected_graph[element_id]:
+                        undirected_graph[element_id].append(connected_id)
+                        if element_id not in undirected_graph[connected_id]:
+                            undirected_graph[connected_id].append(element_id)
+        
+        logger.debug("Сформирован ненаправленный граф: %d узлов", len(undirected_graph))
+        return undirected_graph
     
     def get_element(self, element_id: str) -> Optional[NetworkElement]:
         """Получает элемент сети по идентификатору.

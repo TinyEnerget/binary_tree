@@ -8,8 +8,8 @@ from tree_analyzer import MultiRootAnalyzer, VisualizeForest, TreeCreator
 
 from graph_analyzer import GraphCreator, GraphVisualizer, UndirectedGraphAnalyzer
 
-model_path = 'C:\\Users\\Vlad Titov\\Desktop\\Work\\binary_tree\\model_processing\\available_modification\\converted.json'
-out_path = "output.json"
+model_path = 'model_processing\\available_modification\\converted.json'
+out_path = "res\\output.json"
 
 tree_creator = TreeCreator(model_path, out_path)
 tree = tree_creator.create_tree()
