@@ -82,7 +82,7 @@ class GraphCreator:
             network_model = NetworkModel(model_data)
             # Строим ненаправленный граф
             tree_builder = NetworkTreeBuilder(network_model)
-            self.result = tree_builder.build_undirected_graph()
+            self.result, self.roots = tree_builder.build_undirected_graph()
             # Сохраняем результат
             NetworkAnalyzer.save_tree(self.result, str(self.out_path))
             logger.info("Построение графа завершено. Результаты сохранены в %s", self.out_path)
@@ -92,9 +92,9 @@ class GraphCreator:
         finally:
             logger.info("Анализ модели завершен")
         
-        return self.result
+        return self.result, self.roots
     
-    def create_graph(self) -> Dict[str, Any]:
+    def create_graph(self) -> Tuple[Dict[str, Any], List[str]]:
         """Создает и возвращает структуру ненаправленного графа.
 
         Returns:
@@ -102,7 +102,7 @@ class GraphCreator:
         """
         if not self.result:
             self.model_to_graph()
-        return self.result
+        return self.result, self.roots
     
     def visualize_graph_with_print(self, graph: Dict[str, Any]) -> None:
         """

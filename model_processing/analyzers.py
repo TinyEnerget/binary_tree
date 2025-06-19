@@ -218,6 +218,77 @@ class TransformerAnalyzer(DirectionalElementAnalyzer):
         return ElementType.TRANSFORMER2
 
 
+class SeriesTransformerAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.SERIES_TRANSFORMER
+    
+
+class AutoTransformerAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.AUTO_TRANSFORMER
+
+
+class SwitchAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.SWITCH
+
+
+class BreakerAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.BREAKER
+
+class Transformer2SWAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.TRANSFORMER2SW
+
+
+class EquivalentBranchAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.EQUIVALENT_BRANCH
+    
+
+class CorridorAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.CORRIDOR
+    
+
+class CableLineAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.CABLE_LINE
+
+
+class Transformer3Analyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.TRANSFORMER3
+    
+
+class AutoTransformerSinglePhaseAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.AUTO_TRANSFORMER_SINGLE_PHASE
+    
+
+class CurrentLimiterAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.CURRENT_LIMITER_REACTOR
+    
+
+class MutualCoupledReactorAnalyzer(DirectionalElementAnalyzer):
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.MUTUAL_COUPLED_REACTOR
+
+
 class TerminalElementAnalyzer(ElementAnalyzer):
     """Базовый анализатор для терминальных элементов (генераторы, нагрузки).
 
@@ -248,3 +319,45 @@ class LoadAnalyzer(TerminalElementAnalyzer):
     def get_element_type(self) -> 'ElementType':
         from .models import ElementType
         return ElementType.LOAD
+    
+
+class ShortCircuitAnalyzer(TerminalElementAnalyzer):
+    """Анализатор коротких замыканий"""
+    
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.SHORT_CIRCUIT
+    
+
+class AsynchronousMotorAnalyzer(TerminalElementAnalyzer):
+    """Анализатор асинхронных двигателей"""
+    
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.ASYNCHRONOUS_MOTOR
+    
+
+class SynchronousMotorAnalyzer(TerminalElementAnalyzer):
+    """Анализатор синхронных двигателей"""
+    
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.SYNCHRONOUS_MOTOR
+    
+
+class PetersenCoilAnalyzer(TerminalElementAnalyzer):
+    """Анализатор петерсонских сопротивлений"""
+    
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.PETERSEN_COIL
+    
+
+class StaticCapacitorBankAnalyzer(TerminalElementAnalyzer):
+    """Анализатор статических капиторов"""
+    
+    def get_element_type(self) -> 'ElementType':
+        from .models import ElementType
+        return ElementType.STATIC_CAPACITOR_BANK
+    
+

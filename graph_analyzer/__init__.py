@@ -20,6 +20,7 @@ try:
     from multi_root_graph_analyzer import UndirectedGraphAnalyzer
     from graph_creator import GraphCreator
     from graph_visualizer import GraphVisualizer
+    from connecting_graphs_checker import UndirectedGraphConnectingAnalyzer
 except ImportError as e:
     print(f"Ошибка импорта: {e}")
     # Попробуем относительные импорты
@@ -27,6 +28,7 @@ except ImportError as e:
         from .multi_root_graph_analyzer import UndirectedGraphAnalyzer
         from .graph_creator import GraphCreator
         from .graph_visualizer import GraphVisualizer
+        from .connecting_graphs_checker import UndirectedGraphConnectingAnalyzer
     except ImportError as e2:
         print(f"Ошибка относительного импорта: {e2}")
         raise
@@ -38,4 +40,5 @@ __all__ = [
     'UndirectedGraphAnalyzer',
     'GraphCreator',
     'GraphVisualizer',
+    'UndirectedGraphConnectingAnalyzer',
 ]

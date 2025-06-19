@@ -32,7 +32,6 @@ class UndirectedGraphAnalyzer:
     def find_all_paths(self, start: str, end: str) -> List[List[str]]:
         paths = []
         stack = [(start, [start], set([start]))]
-
         while stack:
             current, path, visited = stack.pop()
             if current == end:
@@ -60,6 +59,37 @@ class UndirectedGraphAnalyzer:
                     queue.append((neighbor, path + [neighbor]))
 
         return None
+    
+    def find_longest_path(self, start: str, end: str) -> List[str]:
+        """Ищет самый длинный простой путь между start и end. Возвращает список узлов на этом пути."""
+        max_path: List[str] = []
+
+        def dfs(current: str, visited: Set[str], path: List[str]):
+            nonlocal max_path
+            if current == end:
+                if len(path) > len(max_path):
+                    max_path = path.copy()
+                return
+
+            for neighbor in self.graph.get(current, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    path.append(neighbor)
+                    dfs(neighbor, visited, path)
+                    path.pop()
+                    visited.remove(neighbor)
+
+        dfs(start, {start}, [start])
+        return max_path
+    
+    def find_all_paths_parallel(self, start: str, end: str) -> List[List[str]]:
+        paths = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = [executor.submit(self.find_all_paths, start, end) for _ in range(self.max_workers)]
+            for future in concurrent.futures.as_completed(futures):
+                paths.extend(future.result())
+
+        return paths
 
     def graph_statistics(self):
         num_nodes = len(self.graph)
@@ -94,6 +124,8 @@ class UndirectedGraphAnalyzer:
         for i, path in enumerate(paths, 1):
             print(f"  Path {i}: {' -> '.join(path)}")
 
+        print(f"Total paths: {len(paths)}")
+
     def print_shortest_path(self, start: str, end: str):
         path = self.find_shortest_path(start, end)
         print(f"Shortest path from {start} to {end}:")
@@ -102,6 +134,26 @@ class UndirectedGraphAnalyzer:
         else:
             print("  No path found.")
 
+    def print_longest_path(self, start: str, end: str):
+        path = self.find_longest_path(start, end)
+        print(f"Longest path from {start} to {end}:")
+        if path:
+            print(f"  {' -> '.join(path)} (Length: {len(path)})")
+        else:
+            print("  No path found.")
+    
+    def print_all_paths_parallel(self, start: str, end: str):
+        paths = self.find_all_paths_parallel(start, end)
+        print(f"All paths from {start} to {end}:")
+        if not paths:
+            print("  No paths found.")
+        for i, path in enumerate(paths, 1):
+            print(f"  Path {i}: {' -> '.join(path)}")
+            print(f"  Path {i} length: {len(path)}")
+
+    def print_all_connected_components(self):
+        components = self.find_connected_components()
+        print(f"Connected components: {components}")
 
 if __name__ == "__main__":
     graph = {
@@ -113,9 +165,8 @@ if __name__ == "__main__":
         "F": {"C", "E"}
     }
 
-    
-
     analyzer = UndirectedGraphAnalyzer(graph)
     analyzer.print_graph_statistics()
     analyzer.print_all_paths("A", "F")
     analyzer.print_shortest_path("A", "F")
+    analyzer.print_all_paths_parallel("A", "F")

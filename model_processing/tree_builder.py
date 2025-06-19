@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 from .models import NetworkModel, NetworkElement, ElementType
 import logging
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ class NetworkTreeBuilder:
             "tree": tree
         }
     
-    def build_undirected_graph(self) -> Dict[str, Any]:
+    def build_undirected_graph(self) -> Tuple[Dict[str, Any], List[str]]:
         """Строит ненаправленный граф сети.
 
         Returns:
@@ -58,8 +58,9 @@ class NetworkTreeBuilder:
                 - 'edges': список кортежей (source, target), представляющих связи.
         """
         graph = self.model.get_undirected_graph()
+        roots = self.model.get_root_elements()
         logger.debug("Построен ненаправленный граф: %d узлов", len(graph))
-        return graph
+        return graph, roots
         #roots = self.model.get_root_elements()
         #graph = self.model.get_undirected_graph()
         #edges = []

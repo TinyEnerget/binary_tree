@@ -43,6 +43,15 @@ def convert_elements(input_path: str, output_path: str):
 
     print(f"Преобразование завершено, результат сохранён в '{output_path}'")
 
+def main_in_file(input_path: str):
+    if not input_path.endswith(".json"):
+        print(f"Ошибка: '{input_path}' не является JSON-файлом", file=sys.stderr)
+        sys.exit(1)
+    base_path = "example_data"
+    input_path_file = input_path.split("\\")[-1]
+    output_path = base_path + "\\" + input_path_file.replace(".json", "_converted.json")
+    convert_elements(input_path, output_path)
+
 def main():
     parser = argparse.ArgumentParser(
         description="Преобразует структуру JSON: elements → {elements: {id: el}, nodes: {node: [ids]}}"
@@ -55,4 +64,5 @@ def main():
     convert_elements(args.input, args.output)
 
 if __name__ == "__main__":
-    main()
+    input_path = "example_data\\three_system_model_with_connection_of_systems.json"
+    main_in_file(input_path)
