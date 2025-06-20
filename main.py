@@ -10,8 +10,8 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-model_path = 'example_data\\three_system_model_with_connection_of_systems_converted.json'
-out_path = "res\\three_system_model_with_connection_of_systems_converted.json"
+model_path = 'example_data\\three_system_model_with_orphans_nodes_and_connected_system_converted.json'
+out_path = "res\\three_system_model_with_orphans_nodes_and_connected_system_converted.json"
 logger.info(f"Creating graph from {model_path}")
 
 graph_creator = GraphCreator(model_path, out_path)

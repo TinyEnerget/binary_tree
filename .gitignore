@@ -1,4 +1,4 @@
-.gitignore
+
 .vscode/settings.json
 model_processing/available_modification
 model_processing/next_tests
@@ -17,3 +17,4 @@ converted.py
 output_graph.json
 .vscode
 *.json
+example_data

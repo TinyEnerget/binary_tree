@@ -64,5 +64,5 @@ def main():
     convert_elements(args.input, args.output)
 
 if __name__ == "__main__":
-    input_path = "example_data\\three_system_model_with_connection_of_systems.json"
+    input_path = "example_data\\three_system_model_with_orphans_nodes_and_connected_system.json"
     main_in_file(input_path)
