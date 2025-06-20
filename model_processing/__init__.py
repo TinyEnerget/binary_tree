@@ -15,7 +15,7 @@ if current_dir not in sys.path:
 try:
     from model_processing.utils import load_json, save_json
     from model_processing.comparator import TreeComparator
-    from model_processing.models import ElementType, NetworkElement, NetworkModel, NetworkModelError
+    from model_processing.models import ElementType, NetworkElement, NetworkModel
     from model_processing.analyzers import BusAnalyzer, ElementAnalyzer, GeneratorAnalyzer, LoadAnalyzer, OverheadLineAnalyzer, SystemAnalyzer, TransformerAnalyzer
     from model_processing.registry import AnalyzerRegistry
     from model_processing.tree_builder import NetworkTreeBuilder
@@ -25,7 +25,7 @@ except ImportError as e:
     try:
         from .utils import load_json, save_json
         from .comparator import TreeComparator
-        from .models import ElementType, NetworkElement, NetworkModel, NetworkModelError
+        from .models import ElementType, NetworkElement, NetworkModel
         from .analyzers import BusAnalyzer, ElementAnalyzer, GeneratorAnalyzer, LoadAnalyzer, OverheadLineAnalyzer, SystemAnalyzer, TransformerAnalyzer
         from .registry import AnalyzerRegistry
         from .tree_builder import NetworkTreeBuilder
@@ -37,4 +37,4 @@ except ImportError as e:
 __version__ = "1.1.0"
 __author__ = "Vlad Titov"
 
-__all__ = ['load_json', 'save_json', 'TreeComparator', 'ElementType', 'NetworkElement', 'NetworkModel', 'BusAnalyzer', 'ElementAnalyzer', 'GeneratorAnalyzer', 'LoadAnalyzer', 'OverheadLineAnalyzer', 'SystemAnalyzer', 'TransformerAnalyzer', 'AnalyzerRegistry', 'NetworkTreeBuilder', 'NetworkAnalyzer', 'NetworkModelError']
+__all__ = ['load_json', 'save_json', 'TreeComparator', 'ElementType', 'NetworkElement', 'NetworkModel', 'BusAnalyzer', 'ElementAnalyzer', 'GeneratorAnalyzer', 'LoadAnalyzer', 'OverheadLineAnalyzer', 'SystemAnalyzer', 'TransformerAnalyzer', 'AnalyzerRegistry', 'NetworkTreeBuilder', 'NetworkAnalyzer']

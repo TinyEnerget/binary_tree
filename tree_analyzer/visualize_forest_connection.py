@@ -8,10 +8,14 @@
 - Обнаружение и отображение циклов внутри деревьев во время печати.
 - Визуализация всего леса, включая печать каждого дерева и списка связей между ними.
 """
-from typing import Any, List, Optional # Импортируем необходимые типы
+from typing import Any, List, Optional, Union # Добавлен Union
+from .tree_construction import Node # Импортируем Node
+# Предполагаем, что MultiRootAnalyzer и MultiRootAnalyzerOpt могут быть переданы
+# Для более строгой типизации можно создать общий базовый класс или Protocol для них
+from .multi_root_analyzer import MultiRootAnalyzer
+from .multi_root_analyzer_optimazed import MultiRootAnalyzerOpt
 
-# Предполагается, что класс Node определен где-то и имеет атрибуты 'value' и 'children'
-# from .tree_construction import Node # Пример, если Node в том же пакете
+AnalyzerTypes = Union[MultiRootAnalyzer, MultiRootAnalyzerOpt]
 
 class VisualizeForest:
     """
@@ -21,25 +25,25 @@ class VisualizeForest:
     of a tree forest and the connections between them, using data from an analyzer class.
 
     Атрибуты / Attributes:
-        analyzer (Any): Экземпляр класса-анализатора (например, `MultiRootAnalyzer`),
-                        который содержит проанализированные данные о лесе (корневые узлы, связи).
-                        An instance of an analyzer class (e.g., `MultiRootAnalyzer`)
-                        that holds analyzed forest data (roots, connections).
+        analyzer (AnalyzerTypes): Экземпляр класса-анализатора (`MultiRootAnalyzer` или `MultiRootAnalyzerOpt`),
+                                  который содержит проанализированные данные о лесе (корневые узлы, связи).
+                                  An instance of an analyzer class (`MultiRootAnalyzer` or `MultiRootAnalyzerOpt`)
+                                  that holds analyzed forest data (roots, connections).
     """
-    def __init__(self, analyzer: Any):
+    def __init__(self, analyzer: AnalyzerTypes):
         """
         Инициализирует объект `VisualizeForest`.
 
         Параметры / Parameters:
-            analyzer (Any): Экземпляр анализатора (например, `MultiRootAnalyzer` или `MultiRootAnalyzerOpt`),
-                            который уже обработал лес и содержит атрибуты `roots` и `connections`.
-                            An analyzer instance that has processed the forest and contains
-                            `roots` and `connections` attributes.
+            analyzer (AnalyzerTypes): Экземпляр анализатора (`MultiRootAnalyzer` или `MultiRootAnalyzerOpt`),
+                                      который уже обработал лес и содержит атрибуты `roots` и `connections`.
+                                      An analyzer instance (`MultiRootAnalyzer` or `MultiRootAnalyzerOpt`)
+                                      that has processed the forest and contains `roots` and `connections` attributes.
         """
-        self.analyzer = analyzer
+        self.analyzer: AnalyzerTypes = analyzer
 
     @staticmethod
-    def print_tree(node: Any, level: int = 0, prefix: str = "Root: ", path: Optional[List[Any]] = None):
+    def print_tree(node: Optional[Node], level: int = 0, prefix: str = "Root: ", path: Optional[List[str]] = None) -> None:
         """
         Статический метод для рекурсивной печати одного дерева с использованием ASCII-графики.
         Static method to recursively print a single tree using ASCII graphics.
@@ -49,50 +53,46 @@ class VisualizeForest:
         Если цикл обнаружен, он печатается, и дальнейший обход по этой ветке прекращается.
 
         Параметры / Parameters:
-            node (Any): Текущий узел для печати (ожидается объект с атрибутами 'value' и 'children').
-                        The current node to print (expected to be an object with 'value' and 'children' attributes).
+            node (Optional[Node]): Текущий узел `Node` для печати. Может быть None.
+                                   The current `Node` to print. Can be None.
             level (int): Текущий уровень вложенности узла, используется для определения отступа.
                          The current nesting level of the node, used for indentation.
             prefix (str): Строковый префикс для текущего узла (например, "├── ", "└── ", "Root: ").
                           String prefix for the current node (e.g., "├── ", "└── ", "Root: ").
-            path (Optional[List[Any]]): Список значений узлов, представляющий текущий путь от корня
+            path (Optional[List[str]]): Список строковых значений узлов, представляющий текущий путь от корня
                                         до родительского узла. Используется для обнаружения циклов.
-                                        A list of node values representing the current path from the root
+                                        A list of string node values representing the current path from the root
                                         to the parent node. Used for cycle detection.
         """
-        if path is None:
-            path = [] # Инициализация пустого пути, если он не передан
+        current_path: List[str] = path if path is not None else []
 
-        # Проверка, что узел существует и имеет атрибут 'value'
-        if node is not None and hasattr(node, 'value'):
-            # Проверка на циклы: если значение текущего узла уже есть в 'path'
-            if node.value in path:
-                try:
-                    cycle_start_index = path.index(node.value)
-                    # Формируем строку, показывающую цикл
-                    cycle_path_str = " -> ".join(map(str, path[cycle_start_index:] + [node.value]))
-                    print(" " * (level * 4) + prefix + str(node.value) + f" [ОБНАРУЖЕН ЦИКЛ / CYCLE DETECTED: {cycle_path_str}]")
-                except ValueError: # На случай, если node.value не найден в path, хотя проверка 'in' прошла
-                    print(" " * (level * 4) + prefix + str(node.value) + f" [ОШИБКА В ОПРЕДЕЛЕНИИ ЦИКЛА / CYCLE DETECTION ERROR]")
-                return # Прерываем дальнейший обход этой ветки
+        if node is None:
+            return # Если узел None, ничего не делаем
 
-            print(" " * (level * 4) + prefix + str(node.value))
+        # Node.value теперь всегда str по определению Node
+        node_value_str = node.value
 
-            # Проверка, что узел имеет дочерние элементы
-            if hasattr(node, 'children') and node.children:
-                # Добавляем значение текущего узла в путь для передачи дочерним узлам
-                new_path = path + [node.value]
-                # Рекурсивно выводим дочерние узлы
-                for i, child in enumerate(node.children):
-                    # Определяем префикс для дочернего узла: "├── " для промежуточных, "└── " для последнего
-                    extension = "├── " if i < len(node.children) - 1 else "└── "
-                    VisualizeForest.print_tree(child, level + 1, extension, new_path)
-        elif node is not None:
-             print(" " * (level * 4) + prefix + "[Узел без значения / Node without value]")
-        # Если node is None, ничего не печатаем
+        if node_value_str in current_path:
+            try:
+                cycle_start_index = current_path.index(node_value_str)
+                # Формируем строку, показывающую цикл
+                cycle_path_display = " -> ".join(current_path[cycle_start_index:] + [node_value_str])
+                print(" " * (level * 4) + prefix + node_value_str + f" [ОБНАРУЖЕН ЦИКЛ / CYCLE DETECTED: {cycle_path_display}]")
+            except ValueError:
+                # Этот блок ValueError не должен срабатывать, если 'in' проверка верна, но оставлен для безопасности
+                print(" " * (level * 4) + prefix + node_value_str + f" [ОШИБКА В ОПРЕДЕЛЕНИИ ЦИКЛА / CYCLE DETECTION ERROR]")
+            return
+
+        print(" " * (level * 4) + prefix + node_value_str)
+
+        if node.children: # children это List[Node]
+            new_current_path = current_path + [node_value_str]
+            for i, child_node in enumerate(node.children):
+                extension = "├── " if i < len(node.children) - 1 else "└── "
+                VisualizeForest.print_tree(child_node, level + 1, extension, new_current_path)
 
 
-    def visualize_forest_connections(self, level: int = 0, prefix: str = "Root: "):
+    def visualize_forest_connections(self, level: int = 0, prefix: str = "Root: ") -> None:
         """
         Визуализирует весь лес деревьев и связи между ними.
         Visualizes the entire tree forest and the connections between them.

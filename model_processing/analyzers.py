@@ -17,20 +17,39 @@ determining its directionality.
 The core is the abstract base class `ElementAnalyzer`, which defines
 a common interface for all concrete analyzers.
 """
+"""
+Этот модуль определяет иерархию классов-анализаторов для различных типов
+элементов электрической сети. Каждый анализатор инкапсулирует логику,
+специфичную для определенного типа элемента, такую как определение его
+топологической роли (например, является ли он корневым узлом), поиск
+дочерних элементов и определение направленности.
+
+Основным является абстрактный базовый класс `ElementAnalyzer`, который
+определяет общий интерфейс для всех конкретных анализаторов.
+
+This module defines a hierarchy of analyzer classes for various types of
+electrical network elements. Each analyzer encapsulates logic specific
+to a particular element type, such as determining its topological role
+(e.g., whether it is a root node), finding its children, and
+determining its directionality.
+
+The core is the abstract base class `ElementAnalyzer`, which defines
+a common interface for all concrete analyzers.
+"""
 from abc import ABC, abstractmethod
-from typing import List, Union, TYPE_CHECKING
+# Импортируем Type для использования в аннотациях классов, если это потребуется (хотя здесь не используется)
+from typing import List, Union, TYPE_CHECKING, Type, Optional
 
 # Отложенный импорт для NetworkElement, ElementType, NetworkModel используется только для проверки типов,
 # чтобы избежать циклических зависимостей во время выполнения.
 # Deferred import for NetworkElement, ElementType, NetworkModel is used only for type checking
 # to avoid circular dependencies at runtime.
-# from .models import NetworkElement, ElementType, NetworkModel # Закомментировано, т.к. используется через TYPE_CHECKING
 
 import logging
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from .models import NetworkElement, ElementType, NetworkModel # Импорты для статической типизации / Imports for static typing
+    from .models import NetworkElement, ElementType, NetworkModel # Импорты для статической типизации / Imports for static typing # pragma: no cover
 
 class ElementAnalyzer(ABC):
     """
@@ -48,16 +67,14 @@ class ElementAnalyzer(ABC):
     """
 
     @abstractmethod
-    def get_element_type(self) -> Union['ElementType', str]:
+    def get_element_type(self) -> 'ElementType': # Возвращаемый тип теперь всегда ElementType
         """
         Абстрактный метод для получения типа элемента, который обрабатывает данный анализатор.
         Abstract method to get the element type that this analyzer handles.
 
         Возвращает / Returns:
-            Union['ElementType', str]: Тип элемента (член перечисления `ElementType` из `models.py`
-                                       или строка для пользовательских/неизвестных типов).
-                                       The element type (an `ElementType` enum member from `models.py`
-                                       or a string for custom/unknown types).
+            'ElementType': Тип элемента (член перечисления `ElementType` из `models.py`).
+                           The element type (an `ElementType` enum member from `models.py`).
         """
         pass
 
@@ -427,7 +444,7 @@ class DirectionalElementAnalyzer(ElementAnalyzer):
 
         # Ищем элемент шины, у которого в списке nodes есть end_node_id
         # и который подключен к нашему 'element' через этот end_node_id
-        
+
         # Сначала найдем все элементы, подключенные к узлу end_node_id
         str_end_node_id = str(end_node_id) # Узлы в node_connections обычно строки
         if str_end_node_id in model.node_connections:
@@ -458,28 +475,34 @@ class DirectionalElementAnalyzer(ElementAnalyzer):
         Determines the "end" node for a directional element.
 
         Для элементов с двумя или более узлами в списке `element.nodes`,
-        второй узел (индекс 1) традиционно считается конечным.
+        второй узел (индекс 1) традиционно считается конечным. Если узел один,
+        он считается и начальным, и конечным. Если узлов нет, возвращается None.
         For elements with two or more nodes in the `element.nodes` list,
-        the second node (index 1) is traditionally considered the end node.
+        the second node (index 1) is traditionally considered the end node. If there is
+        only one node, it is considered both the start and end node. If no nodes, returns None.
 
         Параметры / Parameters:
             element ('NetworkElement'): Направленный элемент.
                                        The directional element.
 
         Возвращает / Returns:
-            Optional[int]: ID конечного узла, или ID первого узла, если только один узел определен,
-                           или None, если у элемента нет узлов.
-                           The ID of the end node, or the ID of the first node if only one is defined,
-                           or None if the element has no nodes.
+            Optional[int]: ID конечного узла или None, если узлы отсутствуют.
+                           The ID of the end node, or None if nodes are absent.
         """
-        if element.nodes:
-            if len(element.nodes) >= 2:
-                return element.nodes[1]  # Второй узел - конечный / Second node is the end node
-            else: # len(element.nodes) == 1
-                logger.debug(f"Направленный элемент {element.id} имеет только один узел ({element.nodes[0]}). Он будет считаться конечным. / Directional element {element.id} has only one node ({element.nodes[0]}). It will be considered the end node.")
-                return element.nodes[0] # Если только один узел, он же и конечный (и начальный)
-        logger.warning(f"Направленный элемент {element.id} не имеет определенных узлов. / Directional element {element.id} has no defined nodes.")
-        return None # Если узлов нет
+        if not hasattr(element, 'nodes') or not element.nodes: # Проверка наличия атрибута и что он не пустой
+            logger.warning(f"Направленный элемент {getattr(element, 'id', 'UNKNOWN_ID')} не имеет определенных узлов в атрибуте 'nodes'. / Directional element {getattr(element, 'id', 'UNKNOWN_ID')} has no defined nodes in 'nodes' attribute.")
+            return None
+
+        if len(element.nodes) >= 2:
+            return element.nodes[1]  # Второй узел - конечный
+        elif len(element.nodes) == 1:
+            # Если только один узел, он может считаться и начальным, и конечным.
+            logger.debug(f"Направленный элемент {element.id} имеет только один узел ({element.nodes[0]}). Он будет считаться конечным (и начальным). / Directional element {element.id} has only one node ({element.nodes[0]}). It will be considered the end (and start) node.")
+            return element.nodes[0]
+
+        # Этот случай не должен достигаться, если element.nodes не пустой, но для полноты:
+        logger.warning(f"Направленный элемент {element.id} имеет пустой список узлов после проверки if element.nodes. / Directional element {element.id} has an empty nodes list after 'if element.nodes' check.")
+        return None
 
     def is_directional(self) -> bool:
         """

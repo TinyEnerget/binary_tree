@@ -7,10 +7,11 @@
 import logging
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional # Added Optional
 from model_processing import (
     NetworkAnalyzer
 )
+from model_processing.models import NetworkAnalysisResult # Added NetworkAnalysisResult
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -50,9 +51,14 @@ def example_1_analyze_network() -> None:
     
     try:
         # Анализируем сеть
+        result: Optional[NetworkAnalysisResult] = None # Initialize with None
         result = NetworkAnalyzer.analyze_network(str(input_file), str(output_file))
         logger.info("Анализ завершен. Результаты сохранены в %s", output_file)
         
+        if result is None: # Should not happen if analyze_network raises on critical errors
+            logger.error("Анализ сети не вернул результат.")
+            return
+
         # Сравниваем с эталоном
         reference_file = Path("example.json")
         if reference_file.exists():

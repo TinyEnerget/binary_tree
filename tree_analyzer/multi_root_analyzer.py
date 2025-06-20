@@ -13,7 +13,9 @@
 """
 
 # Imports
-from typing import List, Dict, Any, Set, Optional, Tuple # Добавлены необходимые типы
+from typing import List, Dict, Any, Set, Optional, Tuple
+from collections import deque # Импортируем deque для _get_tree_depth
+from .tree_construction import Node # Импортируем Node
 
 class MultiRootAnalyzer:
     """
@@ -29,38 +31,40 @@ class MultiRootAnalyzer:
     - Finding connections between root nodes
     - Generating detailed forest and tree statistics
 
-    Атрибуты:
-        roots (list): Коллекция корневых узлов (объектов Node) для анализа.
-                      A collection of root nodes to be analyzed.
-        forest_map (dict): Отображение значения узла на корневые узлы деревьев, в которых он встречается.
-                           Mapping of node values to their root nodes. (Примечание: этот атрибут инициализируется, но не используется в текущей реализации)
-        shared_nodes (dict): Отслеживает значения узлов, которые появляются в нескольких деревьях,
-                             и список этих деревьев.
-                             Tracks node values that appear in multiple trees.
-        connections (list): Список словарей, описывающих связи между парами корневых узлов через общие узлы.
-                            Заполняется методом `find_connections_between_roots`.
-    Attributes:
-        roots (list): A collection of root nodes to be analyzed
-        forest_map (dict): Mapping of node values to their root nodes
-        shared_nodes (dict): Tracks node values that appear in multiple trees
+    Атрибуты / Attributes:
+        roots (List[Node]): Коллекция корневых узлов (объектов `Node`) для анализа.
+                            A collection of `Node` objects to be analyzed.
+        shared_nodes (Dict[str, List[str]]): Отслеживает значения узлов (строки), которые появляются
+                                             в нескольких деревьях, и список идентификаторов этих деревьев
+                                             (например, "Tree_0_RootValue").
+                                             Tracks node values (strings) that appear in multiple trees,
+                                             and a list of tree identifiers (e.g., "Tree_0_RootValue").
+        connections (List[Dict[str, Any]]): Список словарей, описывающих связи между парами корневых
+                                            узлов через общие узлы. Заполняется методом `find_connections_between_roots`.
+                                            A list of dictionaries describing connections between pairs of root
+                                            nodes via common nodes. Populated by `find_connections_between_roots`.
     """
 
-    def __init__(self,
-                 roots: list): # TODO: Указать тип Node после импорта
+    def __init__(self, roots: List[Node]):
         """
         Инициализирует анализатор леса MultiRootAnalyzer.
+        Initializes the MultiRootAnalyzer.
 
-        Параметры:
-            roots (list): Список корневых узлов (экземпляров класса Node), представляющих деревья в лесу.
-                          A list of root nodes (Node instances) representing the trees in the forest.
+        Параметры / Parameters:
+            roots (List[Node]): Список корневых узлов (экземпляров класса `Node`),
+                                представляющих деревья в лесу.
+                                A list of root nodes (`Node` instances) representing
+                                the trees in the forest.
         """
-        self.roots = roots  # список корневых узлов
-        self.forest_map: Dict[Any, list] = {}  # node_value -> list of root_node names (Tree_i_root.value)
-        self.shared_nodes: Dict[Any, list] = {}  # node_value -> [roots_that_contain_it]
-        self.connections: list = [] # Инициализация атрибута connections
-        self.analyze_forest() # Первичный анализ для заполнения shared_nodes
+        self.roots: List[Node] = roots
+        # self.forest_map: Dict[str, List[str]] = {} # Атрибут не используется, удален.
+        self.shared_nodes: Dict[str, List[str]] = {}
+        self.connections: List[Dict[str, Any]] = []
 
-    def analyze_forest(self) -> Dict[Any, list]:
+        if self.roots: # Выполняем первичный анализ, только если есть корни
+            self.analyze_forest()
+
+    def analyze_forest(self) -> Dict[str, List[str]]:
         """
         Анализирует лес, состоящий из нескольких деревьев, для идентификации всех узлов и общих узлов.
 
@@ -75,33 +79,30 @@ class MultiRootAnalyzer:
                   в которых он присутствует.
                   A dictionary mapping each node value to a list of trees it appears in.
         """
-        all_nodes_in_trees: Dict[Any, list] = {} # node_value -> list of tree identifiers
+        all_nodes_in_trees: Dict[str, List[str]] = {}
         self.shared_nodes = {} # Очищаем перед каждым анализом
 
-        for i, root in enumerate(self.roots):
-            # TODO: Убедиться, что root имеет атрибут value (например, является объектом Node)
-            if not hasattr(root, 'value'):
-                # Обработка случая, если root не является ожидаемым объектом Node
-                # Можно логировать ошибку или пропускать такой корень
-                print(f"Warning: Root at index {i} does not have a 'value' attribute and will be skipped.")
+        for i, root_node in enumerate(self.roots): # Переименовано в root_node для ясности
+            if not isinstance(root_node, Node) or not hasattr(root_node, 'value'):
+                print(f"Warning: Корень по индексу {i} не является корректным объектом Node или не имеет атрибута 'value'. Пропуск. / Root at index {i} is not a valid Node object or lacks 'value' attribute. Skipping.")
                 continue
 
-            tree_nodes = self._get_all_nodes_in_tree(root)
-            tree_identifier = f"Tree_{i}_{root.value}"
+            tree_nodes_set = self._get_all_nodes_in_tree(root_node) # root_node это Node
+            # Идентификатор дерева формируется из индекса и значения корневого узла
+            tree_identifier = f"Tree_{i}_{str(root_node.value)}"
 
-            for node_value in tree_nodes:
-                if node_value not in all_nodes_in_trees:
-                    all_nodes_in_trees[node_value] = []
-                all_nodes_in_trees[node_value].append(tree_identifier)
+            for node_val in tree_nodes_set: # node_val здесь уже str из _get_all_nodes_in_tree
+                if node_val not in all_nodes_in_trees:
+                    all_nodes_in_trees[node_val] = []
+                all_nodes_in_trees[node_val].append(tree_identifier)
 
-        # Находим узлы, которые встречаются в нескольких деревьях
-        for node_value, trees in all_nodes_in_trees.items():
-            if len(trees) > 1:
-                self.shared_nodes[node_value] = trees
+        for node_val, tree_list in all_nodes_in_trees.items():
+            if len(tree_list) > 1:
+                self.shared_nodes[node_val] = tree_list
 
         return all_nodes_in_trees
 
-    def _get_all_nodes_in_tree(self, root) -> Set[Any]: # TODO: Указать тип Node
+    def _get_all_nodes_in_tree(self, root: Node) -> Set[str]: # root это Node, возвращает Set[str]
         """
         Вспомогательный метод для получения всех уникальных значений узлов в одном дереве.
 
@@ -117,26 +118,38 @@ class MultiRootAnalyzer:
             set: Множество всех уникальных значений узлов, найденных в дереве.
                  A set of all unique node values found in the tree.
         """
-        nodes: Set[Any] = set()
-        visited_in_current_traversal: Set[Any] = set() # Отслеживание для текущего DFS вызова
+        nodes_set: Set[str] = set()
+        # Используем deque для BFS-подобного обхода для сбора узлов, хотя DFS тоже подойдет
+        # visited_in_traversal отслеживает узлы (по их значению), чтобы не зацикливаться
+        # Важно: Node.value должно быть хешируемым (например, строка)
 
-        def traverse(node): # TODO: Указать тип Node
-            # TODO: Убедиться, что node имеет атрибут value и children
-            if node and hasattr(node, 'value') and node.value not in visited_in_current_traversal:
-                visited_in_current_traversal.add(node.value)
-                nodes.add(node.value)
-                if hasattr(node, 'children') and node.children:
-                    for child in node.children:
-                        traverse(child)
-            elif node and hasattr(node, 'value') and node.value in visited_in_current_traversal:
-                # Обнаружен цикл или повторное посещение в текущем обходе
-                return
+        # Стек для DFS: (Node_instance)
+        dfs_stack: List[Node] = [root]
+        visited_values_in_dfs: Set[str] = set()
 
+        while dfs_stack:
+            current_node_obj = dfs_stack.pop()
 
-        traverse(root)
-        return nodes
+            if not isinstance(current_node_obj, Node) or not hasattr(current_node_obj, 'value'):
+                # Пропускаем некорректные объекты в структуре дерева
+                continue
 
-    def find_connections_between_roots(self) -> list:
+            node_val_str = str(current_node_obj.value) # Приводим значение к строке
+
+            if node_val_str not in visited_values_in_dfs:
+                visited_values_in_dfs.add(node_val_str)
+                nodes_set.add(node_val_str)
+
+                if hasattr(current_node_obj, 'children') and current_node_obj.children:
+                    # Добавляем дочерние узлы в стек для дальнейшего обхода
+                    # Добавляем в обратном порядке, чтобы при извлечении (pop) порядок был "естественным"
+                    for child_node in reversed(current_node_obj.children):
+                        if isinstance(child_node, Node) and hasattr(child_node, 'value') and str(child_node.value) not in visited_values_in_dfs:
+                             dfs_stack.append(child_node)
+                        # Если child_node уже посещен на этом пути DFS, он не добавляется, предотвращая цикл.
+        return nodes_set
+
+    def find_connections_between_roots(self) -> List[Dict[str, Any]]:
         """
         Находит и записывает связи между различными деревьями (корневыми узлами) в лесу через общие узлы.
 
@@ -150,40 +163,39 @@ class MultiRootAnalyzer:
                   A list of dictionaries, each describing a connection between two trees.
                   Пример: [{'root1': 'A', 'root2': 'B', 'common_nodes': ['D'], 'connection_type': 'shared_nodes'}]
         """
-        self.connections = [] # Очищаем перед каждым поиском
-        # Предварительно получаем все узлы для каждого дерева, чтобы избежать повторных вызовов _get_all_nodes_in_tree
-        nodes_per_tree: Dict[str, Set[Any]] = {}
-        for i, root in enumerate(self.roots):
-            if hasattr(root, 'value'):
-                 tree_identifier = f"Tree_{i}_{root.value}" # Используем для ключа, чтобы был уникальным
-                 nodes_per_tree[tree_identifier] = self._get_all_nodes_in_tree(root)
+        self.connections = []
+
+        # Создаем список кортежей (имя_корня_строка, множество_узлов_строк)
+        # Это помогает избежать повторного вызова _get_all_nodes_in_tree для одного и того же корня
+        # и упрощает доступ к данным.
+        root_node_sets: List[Tuple[str, Set[str]]] = []
+        for i, root_node in enumerate(self.roots):
+            if isinstance(root_node, Node) and hasattr(root_node, 'value'):
+                root_node_value_str = str(root_node.value)
+                nodes_in_this_tree = self._get_all_nodes_in_tree(root_node)
+                root_node_sets.append((root_node_value_str, nodes_in_this_tree))
+            else:
+                # Логируем пропуск некорректного корневого элемента
+                print(f"Warning: Корень по индексу {i} пропущен при поиске связей (некорректный объект). / Root at index {i} skipped in find_connections (invalid object).")
 
 
-        root_identifiers = list(nodes_per_tree.keys())
+        for i in range(len(root_node_sets)):
+            for j in range(i + 1, len(root_node_sets)):
+                root1_val_str, nodes1_set = root_node_sets[i]
+                root2_val_str, nodes2_set = root_node_sets[j]
 
-        for i in range(len(root_identifiers)):
-            for j in range(i + 1, len(root_identifiers)):
-                # Извлекаем оригинальные значения корней из идентификаторов
-                # Формат идентификатора: "Tree_index_originalRootValue"
-                # Это немного громоздко; лучше хранить объекты Node или их исходные значения напрямую, если возможно
-                original_root1_value = root_identifiers[i].split('_', 2)[-1]
-                original_root2_value = root_identifiers[j].split('_', 2)[-1]
+                common_nodes_set = nodes1_set.intersection(nodes2_set)
 
-                nodes1 = nodes_per_tree[root_identifiers[i]]
-                nodes2 = nodes_per_tree[root_identifiers[j]]
-
-                common_nodes = nodes1.intersection(nodes2)
-
-                if common_nodes:
+                if common_nodes_set:
                     self.connections.append({
-                        'root1': original_root1_value,
-                        'root2': original_root2_value,
-                        'common_nodes': list(common_nodes),
+                        'root1': root1_val_str,
+                        'root2': root2_val_str,
+                        'common_nodes': sorted(list(common_nodes_set)), # Сортируем для консистентности
                         'connection_type': 'shared_nodes'
                     })
         return self.connections
 
-    def get_forest_statistics(self) -> Dict[str, Any]:
+    def get_forest_statistics(self) -> Dict[str, Any]: # Структура возвращаемого словаря детализирована в docstring
         """
         Собирает и возвращает статистику по всему лесу деревьев.
 
@@ -205,28 +217,37 @@ class MultiRootAnalyzer:
         if not self.shared_nodes and self.roots:
              self.analyze_forest()
 
-        stats: Dict[str, Any] = {
-            'total_roots': len(self.roots),
-            'trees_info': [],
-            'shared_nodes': self.shared_nodes.copy() # Возвращаем копию
-        }
+        # Убедимся, что shared_nodes актуальны
+        if not self.shared_nodes and self.roots: # Если shared_nodes пуст, но есть корни
+             self.analyze_forest() # Это может быть избыточным, если analyze_forest уже вызывался в __init__
 
-        for i, root in enumerate(self.roots):
-            if not hasattr(root, 'value'): continue # Пропуск некорректных корней
+        # Типизация trees_info как список словарей с определенной структурой
+        TreeInfoType = Dict[str, Union[str, int, List[str]]]
+        trees_info_list: List[TreeInfoType] = []
 
-            tree_nodes = self._get_all_nodes_in_tree(root)
-            tree_depth = self._get_tree_depth(root)
+        for i, root_node in enumerate(self.roots): # root_node это Node
+            if not isinstance(root_node, Node) or not hasattr(root_node, 'value'):
+                # Пропускаем некорректные корневые узлы
+                continue
 
-            stats['trees_info'].append({
-                'root': root.value,
-                'nodes_count': len(tree_nodes),
-                'depth': tree_depth,
-                'nodes': list(tree_nodes)
+            tree_nodes_set = self._get_all_nodes_in_tree(root_node) # Возвращает Set[str]
+            tree_depth_val = self._get_tree_depth(root_node) # Возвращает int
+
+            trees_info_list.append({
+                'root': str(root_node.value), # Значение корня как строка
+                'nodes_count': len(tree_nodes_set),
+                'depth': tree_depth_val,
+                'nodes': sorted(list(tree_nodes_set)) # Список узлов как строки, отсортированный
             })
 
-        return stats
+        stats_result: Dict[str, Any] = {
+            'total_roots': len(self.roots),
+            'trees_info': trees_info_list,
+            'shared_nodes': self.shared_nodes.copy()
+        }
+        return stats_result
 
-    def _get_tree_depth(self, root) -> int: # TODO: Указать тип Node
+    def _get_tree_depth(self, root: Node) -> int:
         """
         Вспомогательный метод для вычисления глубины одного дерева с защитой от циклов.
 
@@ -244,39 +265,65 @@ class MultiRootAnalyzer:
             int: Глубина дерева. Равно 0, если дерево пустое (root is None).
                  The depth of the tree. Returns 0 if the tree is empty.
         """
-        if not root or not hasattr(root, 'value'): # Проверка на None и наличие value
-            return 0
+        if not isinstance(root, Node) or not hasattr(root, 'value'):
+            return 0 # Некорректный узел или узел без значения
 
         max_depth_val = 0
-        # visited_paths_dfs хранит кортежи значений узлов пути для обнаружения уже пройденных уникальных путей
-        # Это важно для графов, где узел может быть достигнут разными путями, но мы не хотим зацикливаться.
-        
-        # queue для DFS: (node, current_depth, current_path_tuple)
-        # current_path_tuple используется для обнаружения циклов на текущем пути обхода.
-        queue: List[Tuple[Any, int, Tuple[Any, ...]]] = [(root, 1, (root.value,))] # TODO: Указать тип Node для root
+        # Стек для DFS: (Node_instance, current_depth, set_of_visited_values_on_this_path)
+        dfs_stack: List[Tuple[Node, int, Set[str]]] = [(root, 1, {str(root.value)})]
 
-        while queue:
-            current_node, current_depth, path_tuple = queue.pop(0) # Берем из начала для BFS-подобного исследования уровней глубины
-                                                                 # или queue.pop() для DFS. Для глубины чаще DFS.
-                                                                 # Используем DFS (pop())
+        while dfs_stack:
+            current_node_obj, current_d, visited_on_path = dfs_stack.pop()
 
-            current_node_value = current_node.value # TODO: Убедиться, что current_node имеет value
-            max_depth_val = max(max_depth_val, current_depth)
+            max_depth_val = max(max_depth_val, current_d)
 
-            if hasattr(current_node, 'children') and current_node.children:
-                for child in current_node.children:
-                    # TODO: Убедиться, что child имеет value
-                    if hasattr(child, 'value'):
-                        child_value = child.value
-                        if child_value not in path_tuple: # Проверка на цикл в текущем пути
-                            new_path_tuple = path_tuple + (child_value,)
-                            queue.append((child, current_depth + 1, new_path_tuple))
-                        # Если child_value in path_tuple, это цикл, не идем дальше по этому пути.
-
+            if hasattr(current_node_obj, 'children') and current_node_obj.children:
+                for child_obj in reversed(current_node_obj.children): # Обходим в обратном порядке для "естественного" DFS
+                    if isinstance(child_obj, Node) and hasattr(child_obj, 'value'):
+                        child_val_str = str(child_obj.value)
+                        if child_val_str not in visited_on_path: # Предотвращение цикла
+                            new_visited_on_path = visited_on_path.copy() # Копируем для новой ветки
+                            new_visited_on_path.add(child_val_str)
+                            dfs_stack.append((child_obj, current_d + 1, new_visited_on_path))
         return max_depth_val
 
-        # Старая рекурсивная реализация с более сложной защитой от циклов:
-        # max_depth = 0
+
+    # Старая рекурсивная реализация с более сложной защитой от циклов: (оставлена для справки, если понадобится)
+    # def _get_tree_depth_recursive(self, root: Node, visited_paths: Optional[Set[Tuple[str, ...]]] = None, path: Optional[List[str]] = None) -> int:
+    #     if visited_paths is None:
+    #         visited_paths = set()
+    #     if path is None:
+    #         path = []
+
+    #     if not isinstance(root, Node) or not hasattr(root, 'value'):
+    #         return 0
+
+    #     current_node_value_str = str(root.value)
+    #     # path_key для visited_paths должен быть уникальным для пути, чтобы избежать повторного обхода
+    #     # path_tuple для проверки цикла в текущей ветке
+    #     path_tuple_for_cycle_check = tuple(path + [current_node_value_str])
+
+    #     if path_tuple_for_cycle_check in visited_paths: # Этот путь уже полностью исследован
+    #         return 0
+    #     if current_node_value_str in path: # Обнаружен цикл в текущей ветке DFS
+    #         return 0
+
+    #     visited_paths.add(path_tuple_for_cycle_check)
+
+    #     current_max_depth = 1 # Текущий узел добавляет 1 к глубине
+
+    #     if hasattr(root, 'children') and root.children:
+    #         max_child_depth = 0
+    #         for child in root.children:
+    #             child_depth = self._get_tree_depth_recursive(child, visited_paths, path + [current_node_value_str])
+    #             if child_depth > max_child_depth:
+    #                 max_child_depth = child_depth
+    #         current_max_depth += max_child_depth
+        
+    #     return current_max_depth
+
+
+    def print_forest_statistics(self) -> None:
         # visited_paths = set() # Хранит кортежи путей (node.value, node.value, ...)
 
         # def dfs(node, depth, current_path_values): # current_path_values - значения узлов в текущем пути dfs
@@ -355,38 +402,48 @@ class MultiRootAnalyzer:
 
     # Дублирующийся метод find_connections_between_roots удален. Оставлен первый.
 
-    def find_all_paths_to_node(self, target_value: Any) -> Dict[str, List[List[Any]]]:
+    def find_all_paths_to_node(self, target_value: str) -> Dict[str, List[List[str]]]: # target_value это str
         """
         Находит все возможные пути от любого из корневых узлов до указанного целевого узла
-        во всех деревьях леса.
+        (по его значению) во всех деревьях леса.
+        Finds all possible paths from any of the root nodes to the specified target node
+        (by its value) in all trees of the forest.
 
         Итерирует по каждому дереву в `self.roots`, вызывая `_find_paths_in_tree`
         для поиска путей к `target_value` внутри этого дерева.
         Результаты агрегируются в словарь, где ключами являются идентификаторы деревьев
-        (например, "Tree_0_RootA"), а значениями — списки найденных путей.
+        (например, "Tree_0_RootA"), а значениями — списки найденных путей (списков строк).
+        Iterates through each tree in `self.roots`, calling `_find_paths_in_tree`
+        to find paths to `target_value` within that tree.
+        Results are aggregated into a dictionary where keys are tree identifiers
+        (e.g., "Tree_0_RootA"), and values are lists of found paths (lists of strings).
 
-        Параметры / Args:
-            target_value (Any): Значение узла, до которого необходимо найти пути.
-                                The value of the target node.
+        Параметры / Parameters:
+            target_value (str): Значение (ID) узла, до которого необходимо найти пути.
+                                The value (ID) of the target node.
 
         Возвращает / Returns:
-            Dict[str, List[List[Any]]]: Словарь, где ключ - это имя дерева (например, "Tree_0_A"),
-                                        а значение - список путей (списков значений узлов) до целевого узла в этом дереве.
-                                        A dictionary mapping tree names to lists of paths (lists of node values).
+            Dict[str, List[List[str]]]: Словарь, где ключ - это имя дерева,
+                                        а значение - список путей (каждый путь - список ID узлов)
+                                        до целевого узла в этом дереве.
+                                        A dictionary where the key is the tree name,
+                                        and the value is a list of paths (each path a list of node IDs)
+                                        to the target node in that tree.
         """
-        all_paths: Dict[str, List[List[Any]]] = {}
+        all_found_paths: Dict[str, List[List[str]]] = {}
 
-        for i, root in enumerate(self.roots):
-            if not hasattr(root, 'value'): continue # Пропускаем некорректные корни
-            tree_name = f"Tree_{i}_{root.value}"
-            paths = self._find_paths_in_tree(root, target_value)
+        for i, root_node in enumerate(self.roots): # root_node это Node
+            if not isinstance(root_node, Node) or not hasattr(root_node, 'value'):
+                continue
+            tree_identifier = f"Tree_{i}_{str(root_node.value)}"
+            paths_in_tree = self._find_paths_in_tree(root_node, target_value) # target_value это str
 
-            if paths:
-                all_paths[tree_name] = paths
+            if paths_in_tree:
+                all_found_paths[tree_identifier] = paths_in_tree
 
-        return all_paths
+        return all_found_paths
 
-    def _find_paths_in_tree(self, root, target_value: Any) -> List[List[Any]]: # TODO: Указать тип Node для root
+    def _find_paths_in_tree(self, root: Node, target_value: str) -> List[List[str]]: # root это Node, target_value это str
         """
         Вспомогательный метод для поиска всех путей от заданного корневого узла до целевого узла
         в пределах одного дерева. Использует обход в глубину (DFS).
@@ -404,36 +461,36 @@ class MultiRootAnalyzer:
             List[List[Any]]: Список всех найденных путей. Каждый путь представлен как список значений узлов.
                              A list of all paths found. Each path is a list of node values.
         """
-        all_paths_in_tree: List[List[Any]] = []
+        all_paths_in_tree: List[List[str]] = [] # Список путей, каждый путь - список строк (ID узлов)
 
-        # path_so_far - текущий путь (список значений узлов)
-        # visited_in_path - множество значений узлов в текущем пути для обнаружения циклов
-        # TODO: Указать тип Node для node в стеке
-        stack: List[Tuple[Any, List[Any], Set[Any]]] = []
-        if hasattr(root, 'value'): # Начальная проверка для root
-            stack.append((root, [root.value], {root.value}))
+        if not isinstance(root, Node) or not hasattr(root, 'value'):
+            return all_paths_in_tree # Возвращаем пустой список, если корень некорректен
 
-        while stack:
-            current_node, path_so_far, visited_in_path = stack.pop()
+        # Стек для DFS: (Node_instance, current_path_list_of_strings, visited_on_path_set_of_strings)
+        dfs_stack: List[Tuple[Node, List[str], Set[str]]] = []
 
-            if not hasattr(current_node, 'value'): continue
+        root_value_str = str(root.value)
+        dfs_stack.append((root, [root_value_str], {root_value_str}))
 
-            # Если текущий узел - целевой, добавляем копию пути в результаты
-            if current_node.value == target_value:
-                all_paths_in_tree.append(list(path_so_far)) # list() для копии
+        while dfs_stack:
+            current_node_obj, path_list_str, visited_set_str = dfs_stack.pop()
 
-            if hasattr(current_node, 'children') and current_node.children:
-                # Обходим дочерние узлы в обратном порядке, чтобы DFS исследовал их "слева направо"
-                # если рассматривать порядок добавления в стек
-                for child in reversed(current_node.children):
-                    if hasattr(child, 'value') and child.value not in visited_in_path:
-                        new_path = path_so_far + [child.value]
-                        new_visited = visited_in_path.copy()
-                        new_visited.add(child.value)
-                        stack.append((child, new_path, new_visited))
+            # current_node_obj.value уже должен быть str из-за Node.value: str
+            if current_node_obj.value == target_value: # Сравниваем со строкой target_value
+                all_paths_in_tree.append(list(path_list_str))
+
+            if hasattr(current_node_obj, 'children') and current_node_obj.children:
+                for child_obj in reversed(current_node_obj.children):
+                    if isinstance(child_obj, Node) and hasattr(child_obj, 'value'):
+                        child_val_str = str(child_obj.value)
+                        if child_val_str not in visited_set_str: # Проверка на цикл в текущем пути
+                            new_path = path_list_str + [child_val_str]
+                            new_visited_set = visited_set_str.copy() # Важно копировать для каждой новой ветки
+                            new_visited_set.add(child_val_str)
+                            dfs_stack.append((child_obj, new_path, new_visited_set))
         return all_paths_in_tree
 
-    def find_shortest_path_to_node(self, target_value: Any) -> Optional[Dict[str, Any]]:
+    def find_shortest_path_to_node(self, target_value: str) -> Optional[Dict[str, Any]]: # target_value это str
         """
         Находит кратчайший путь до указанного целевого узла среди всех деревьев в лесу.
 
@@ -451,26 +508,26 @@ class MultiRootAnalyzer:
                                       or None if the node is not found or no paths exist.
                                       Пример: {'tree': 'Tree_0_A', 'path': ['A', 'D'], 'length': 2}
         """
-        all_paths = self.find_all_paths_to_node(target_value)
+        all_paths_dict = self.find_all_paths_to_node(target_value) # target_value это str
 
-        if not all_paths:
+        if not all_paths_dict:
             return None
 
-        shortest_path_data: Optional[Dict[str, Any]] = None
-        shortest_length = float('inf')
+        shortest_path_info: Optional[Dict[str, Any]] = None
+        min_path_len = float('inf')
 
-        for tree_name, paths_in_tree in all_paths.items():
-            for path in paths_in_tree:
-                if len(path) < shortest_length:
-                    shortest_length = len(path)
-                    shortest_path_data = {
-                        'tree': tree_name,
-                        'path': path,
-                        'length': shortest_length # Длина в количестве узлов
+        for tree_identifier, paths_list in all_paths_dict.items():
+            for current_path in paths_list: # current_path это List[str]
+                if len(current_path) < min_path_len:
+                    min_path_len = len(current_path)
+                    shortest_path_info = {
+                        'tree': tree_identifier, # Имя дерева, где найден кратчайший путь
+                        'path': current_path,    # Сам путь (List[str])
+                        'length': min_path_len   # Длина пути (количество узлов)
                     }
-        return shortest_path_data
+        return shortest_path_info
 
-    def find_all_paths_between_nodes(self, start_value: Any, end_value: Any) -> Dict[str, List[List[Any]]]:
+    def find_all_paths_between_nodes(self, start_value: str, end_value: str) -> Dict[str, List[List[str]]]: # start/end_value это str
         """
         Находит все пути между двумя заданными узлами (по их значениям) во всех деревьях леса.
 
@@ -489,19 +546,20 @@ class MultiRootAnalyzer:
                                         (списков значений узлов) между начальным и конечным узлами в этом дереве.
                                         A dictionary mapping tree names to lists of paths.
         """
-        all_paths_result: Dict[str, List[List[Any]]] = {}
+        all_found_paths_dict: Dict[str, List[List[str]]] = {}
 
-        for i, root in enumerate(self.roots):
-            if not hasattr(root, 'value'): continue
-            tree_name = f"Tree_{i}_{root.value}"
-            paths = self._find_paths_between_nodes_in_tree(root, start_value, end_value)
+        for i, root_node in enumerate(self.roots): # root_node это Node
+            if not isinstance(root_node, Node) or not hasattr(root_node, 'value'):
+                 continue
+            tree_identifier = f"Tree_{i}_{str(root_node.value)}"
+            paths_list = self._find_paths_between_nodes_in_tree(root_node, start_value, end_value) # start/end_value это str
 
-            if paths:
-                all_paths_result[tree_name] = paths
+            if paths_list:
+                all_found_paths_dict[tree_identifier] = paths_list
 
-        return all_paths_result
+        return all_found_paths_dict
 
-    def _find_paths_between_nodes_in_tree(self, root, start_value: Any, end_value: Any) -> List[List[Any]]: # TODO: Указать тип Node для root
+    def _find_paths_between_nodes_in_tree(self, root: Node, start_value: str, end_value: str) -> List[List[str]]: # root это Node, start/end_value это str
         """
         Вспомогательный метод для поиска всех путей между начальным и конечным узлами
         (по их значениям) в пределах одного дерева. Использует DFS.
@@ -521,53 +579,55 @@ class MultiRootAnalyzer:
             List[List[Any]]: Список всех найденных путей между `start_value` и `end_value`.
                              A list of all paths found.
         """
-        paths_found: List[List[Any]] = []
-        # Стек для DFS: (node, current_path_values, visited_on_path_values, has_found_start_node)
-        # TODO: Указать тип Node для node в стеке
-        stack: List[Tuple[Any, List[Any], Set[Any], bool]] = []
-        if hasattr(root, 'value'):
-            stack.append((root, [root.value], {root.value}, root.value == start_value))
+        paths_result_list: List[List[str]] = [] # Список путей, каждый путь - список строк
 
+        if not isinstance(root, Node) or not hasattr(root, 'value'):
+            return paths_result_list
 
-        while stack:
-            current_node, path_values, visited_on_path, found_start = stack.pop()
+        # Стек для DFS: (Node_instance, current_path_list_of_strings, visited_on_path_set_of_strings, has_found_start_flag)
+        dfs_stack: List[Tuple[Node, List[str], Set[str], bool]] = []
 
-            if not hasattr(current_node, 'value'): continue
+        root_value_str = str(root.value)
+        # Начальное состояние: начинаем с корневого узла, путь содержит только его,
+        # он посещен на этом пути, флаг found_start зависит от того, является ли корень начальным узлом.
+        dfs_stack.append((root, [root_value_str], {root_value_str}, root_value_str == start_value))
 
-            # Если текущий узел - это start_value, отмечаем это
-            if current_node.value == start_value:
-                found_start = True
-                # Если start_value меняется, нужно обновить path_values и visited_on_path,
-                # чтобы путь начинался с текущего start_value.
-                path_values = [current_node.value]
-                visited_on_path = {current_node.value}
+        while dfs_stack:
+            current_node_obj, current_path_list_str, visited_set_str, has_found_start_node = dfs_stack.pop()
 
+            current_node_val_str = str(current_node_obj.value) # Гарантируем строку
 
-            # Если мы уже нашли start_value и текущий узел - это end_value, то путь найден
-            if found_start and current_node.value == end_value:
-                paths_found.append(list(path_values)) # Добавляем копию пути
+            # Если текущий узел - это start_value, обновляем состояние пути
+            if current_node_val_str == start_value:
+                has_found_start_node = True
+                current_path_list_str = [current_node_val_str] # Путь начинается заново с этого узла
+                visited_set_str = {current_node_val_str}   # Посещенные на этом "новом" пути
+
+            # Если start_value уже был найден на пути и текущий узел - это end_value, то путь найден
+            if has_found_start_node and current_node_val_str == end_value:
+                paths_result_list.append(list(current_path_list_str))
+                # Продолжаем поиск других путей, если они есть (не делаем continue)
 
             # Продолжаем поиск в дочерних узлах
-            if hasattr(current_node, 'children') and current_node.children:
-                for child in reversed(current_node.children): # Обходим в обратном порядке для "естественного" DFS
-                    if hasattr(child, 'value') and child.value not in visited_on_path:
-                        new_path_values = path_values + [child.value] if found_start else [child.value] if child.value == start_value else []
-                        # Путь строится только если found_start is True, или если child является start_value
+            if hasattr(current_node_obj, 'children') and current_node_obj.children:
+                for child_obj in reversed(current_node_obj.children):
+                    if isinstance(child_obj, Node) and hasattr(child_obj, 'value'):
+                        child_val_str = str(child_obj.value)
+                        if child_val_str not in visited_set_str: # Предотвращаем циклы в текущем пути
+                            # Если start_value уже найден, просто расширяем путь
+                            if has_found_start_node:
+                                new_path = current_path_list_str + [child_val_str]
+                                new_visited = visited_set_str.copy()
+                                new_visited.add(child_val_str)
+                                dfs_stack.append((child_obj, new_path, new_visited, True))
+                            # Если start_value еще не найден, но текущий child - это start_value, начинаем новый путь
+                            elif child_val_str == start_value:
+                                dfs_stack.append((child_obj, [child_val_str], {child_val_str}, True))
+                            # Иначе (start_value не найден и child не start_value) - этот путь не рассматриваем,
+                            # так как он не начинается с start_value.
+        return paths_result_list
 
-                        if found_start or child.value == start_value: # Только если мы уже на пути от start_value или child - это start_value
-                            current_found_start = found_start or (child.value == start_value)
-
-                            new_visited_on_path = visited_on_path.copy()
-                            new_visited_on_path.add(child.value)
-
-                            # Если child это start_value и мы его еще не нашли, то path_values должен начаться с него
-                            actual_new_path_values = [child.value] if (child.value == start_value and not found_start) else path_values + [child.value] if found_start else []
-
-                            if actual_new_path_values : # Только если есть что добавлять в стек (т.е. путь валиден)
-                                stack.append((child, actual_new_path_values, new_visited_on_path, current_found_start))
-        return paths_found
-
-    def print_all_paths_to_node(self, target_value: Any):
+    def print_all_paths_to_node(self, target_value: str) -> None: # target_value это str
         """
         Выводит в консоль все найденные пути до указанного целевого узла.
 
@@ -575,25 +635,25 @@ class MultiRootAnalyzer:
         Prints all found paths to the specified target node to the console.
         Uses `find_all_paths_to_node` to get the data, then formats and prints it.
 
-        Параметры / Args:
-            target_value (Any): Значение целевого узла. / The value of the target node.
+        Параметры / Parameters:
+            target_value (str): Значение (ID) целевого узла. / The value (ID) of the target node.
         """
-        paths = self.find_all_paths_to_node(target_value)
+        paths_dict = self.find_all_paths_to_node(target_value) # target_value это str
         print(f"\nВсе пути к узлу '{target_value}' / All paths to node '{target_value}':")
 
-        if not paths:
+        if not paths_dict:
             print(f"  Узел '{target_value}' не найден ни в одном дереве. / Node '{target_value}' not found in any tree.")
             return
 
-        for tree_name, tree_paths in paths.items():
-            print(f"\n  В дереве / In tree '{tree_name}':")
-            if not tree_paths:
+        for tree_identifier, paths_list in paths_dict.items():
+            print(f"\n  В дереве / In tree '{tree_identifier}':")
+            if not paths_list:
                 print(f"    Нет путей к '{target_value}' в этом дереве. / No paths to '{target_value}' in this tree.")
                 continue
-            for i, path in enumerate(tree_paths, 1):
-                print(f"    Путь {i} / Path {i}: {' -> '.join(map(str, path))}")
+            for i, current_path in enumerate(paths_list, 1): # current_path это List[str]
+                print(f"    Путь {i} / Path {i}: {' -> '.join(current_path)}") # map(str, path) не нужен, т.к. уже строки
 
-    def print_shortest_path_to_node(self, target_value: Any):
+    def print_shortest_path_to_node(self, target_value: str) -> None: # target_value это str
         """
         Выводит в консоль кратчайший путь до указанного целевого узла.
 
@@ -601,21 +661,21 @@ class MultiRootAnalyzer:
         Prints the shortest path to the specified target node to the console.
         Uses `find_shortest_path_to_node` to get the data, then formats and prints it.
 
-        Параметры / Args:
-            target_value (Any): Значение целевого узла. / The value of the target node.
+        Параметры / Parameters:
+            target_value (str): Значение (ID) целевого узла. / The value (ID) of the target node.
         """
-        shortest = self.find_shortest_path_to_node(target_value)
+        shortest_path_info = self.find_shortest_path_to_node(target_value) # target_value это str
 
         print(f"\nКратчайший путь к узлу '{target_value}' / Shortest path to node '{target_value}':")
-        if not shortest:
+        if not shortest_path_info:
             print(f"  Узел '{target_value}' не найден ни в одном дереве. / Node '{target_value}' not found in any tree.")
             return
 
-        print(f"  Дерево / Tree: {shortest['tree']}")
-        print(f"  Путь / Path: {' -> '.join(map(str, shortest['path']))}")
-        print(f"  Длина / Length: {shortest['length']} узлов / nodes")
+        print(f"  Дерево / Tree: {shortest_path_info['tree']}")
+        print(f"  Путь / Path: {' -> '.join(shortest_path_info['path'])}") # path уже List[str]
+        print(f"  Длина / Length: {shortest_path_info['length']} узлов / nodes") # Длина в узлах
 
-    def print_paths_between_nodes(self, start_value: Any, end_value: Any):
+    def print_paths_between_nodes(self, start_value: str, end_value: str) -> None: # start/end_value это str
         """
         Выводит в консоль все пути между двумя указанными узлами.
 
@@ -623,24 +683,24 @@ class MultiRootAnalyzer:
         Prints all paths between two specified nodes to the console.
         Uses `find_all_paths_between_nodes` to get the data, then formats and prints it.
 
-        Параметры / Args:
-            start_value (Any): Значение начального узла. / The value of the start node.
-            end_value (Any): Значение конечного узла. / The value of the end node.
+        Параметры / Parameters:
+            start_value (str): Значение (ID) начального узла. / The value (ID) of the start node.
+            end_value (str): Значение (ID) конечного узла. / The value (ID) of the end node.
         """
-        paths = self.find_all_paths_between_nodes(start_value, end_value)
+        paths_dict = self.find_all_paths_between_nodes(start_value, end_value) # start/end_value это str
         print(f"\nВсе пути от '{start_value}' к '{end_value}' / All paths from '{start_value}' to '{end_value}':")
 
-        if not paths:
+        if not paths_dict:
             print(f"  Пути от '{start_value}' к '{end_value}' не найдены. / No paths found from '{start_value}' to '{end_value}'.")
             return
 
-        for tree_name, tree_paths in paths.items():
-            print(f"\n  В дереве / In tree '{tree_name}':")
-            if not tree_paths:
-                print(f"    Нет путей от '{start_value}' к '{end_value}' в этом дереве. / No paths from '{start_value}' to '{end_value}' in this tree.")
-                continue
-            for i, path in enumerate(tree_paths, 1):
-                print(f"    Путь {i} / Path {i}: {' -> '.join(map(str, path))}")
+        for tree_identifier, paths_list in paths_dict.items():
+            print(f"\n  В дереве / In tree '{tree_identifier}':")
+            if not paths_list:
+                 print(f"    Нет путей от '{start_value}' к '{end_value}' в этом дереве. / No paths from '{start_value}' to '{end_value}' in this tree.")
+                 continue
+            for i, current_path in enumerate(paths_list, 1): # current_path это List[str]
+                print(f"    Путь {i} / Path {i}: {' -> '.join(current_path)}") # map(str, path) не нужен
 if __name__ == '__main__':
     from tree_construction import Node
 

@@ -17,12 +17,13 @@ such as `NetworkModel` and `NetworkTreeBuilder`, to perform its tasks.
 It also includes static methods for utility operations like loading models
 and saving analysis results.
 """
-from typing import Dict, Any, Optional, List, Set # Добавлены List и Set для rewrite_nodes и find_root_nodes
+from typing import Dict, Any, Optional, List, Set, Type # Added Type for class methods
 import json # Для json.JSONDecodeError в docstring load_model
+from dataclasses import asdict # Для преобразования NetworkAnalysisResult в dict
 
 from .utils import load_json, save_json
 from .comparator import TreeComparator
-from .models import NetworkModel, NetworkAnalysisResult # Импорт NetworkAnalysisResult
+from .models import NetworkModel, NetworkAnalysisResult
 from .tree_builder import NetworkTreeBuilder
 
 import logging
@@ -77,26 +78,34 @@ class NetworkAnalyzer:
         return load_json(file_path)
 
     @staticmethod
-    def save_tree(tree_data: Dict[str, Any], file_path: str) -> None:
+    def save_tree(tree_data: NetworkAnalysisResult, file_path: str) -> None:
         """
-        Сохраняет построенное дерево сети в JSON-файл.
-        Saves the constructed network tree to a JSON file.
+        Сохраняет построенное дерево сети (объект `NetworkAnalysisResult`) в JSON-файл.
+        Saves the constructed network tree (`NetworkAnalysisResult` object) to a JSON file.
 
-        Использует утилиту `save_json` из `.utils`.
-        Uses the `save_json` utility from `.utils`.
+        Перед сохранением объект `NetworkAnalysisResult` преобразуется в словарь
+        с помощью `dataclasses.asdict()`. Использует утилиту `save_json` из `.utils`.
+        Before saving, the `NetworkAnalysisResult` object is converted to a dictionary
+        using `dataclasses.asdict()`. Uses the `save_json` utility from `.utils`.
 
         Параметры / Parameters:
-            tree_data (Dict[str, Any]): Данные дерева сети (словарь, содержащий 'roots', 'nodes', 'tree').
-                                        Network tree data (dictionary containing 'roots', 'nodes', 'tree').
+            tree_data (NetworkAnalysisResult): Данные дерева сети в виде объекта `NetworkAnalysisResult`.
+                                               Network tree data as a `NetworkAnalysisResult` object.
             file_path (str): Путь для сохранения JSON-файла.
                              Path to save the JSON file.
 
         Выбрасывает / Raises:
             OSError: Если возникает ошибка при записи файла (например, проблемы с правами доступа).
                      If an error occurs while writing the file (e.g., permission issues).
+            TypeError: Если `tree_data` не является экземпляром `NetworkAnalysisResult`.
+                       If `tree_data` is not an instance of `NetworkAnalysisResult`.
         """
-        logger.info(f"Сохранение дерева в файл: {file_path} / Saving tree to file: {file_path}")
-        save_json(file_path, tree_data)
+        if not isinstance(tree_data, NetworkAnalysisResult):
+            msg = "Данные для сохранения дерева должны быть экземпляром NetworkAnalysisResult. / Data for saving tree must be an instance of NetworkAnalysisResult."
+            logger.error(msg)
+            raise TypeError(msg)
+        logger.info(f"Сохранение дерева NetworkAnalysisResult в файл: {file_path} / Saving NetworkAnalysisResult tree to file: {file_path}")
+        save_json(file_path, asdict(tree_data)) # Преобразуем датакласс в словарь для save_json
 
     @classmethod
     def analyze_network(cls, model_path: str, output_path: Optional[str] = None) -> NetworkAnalysisResult:
@@ -170,13 +179,13 @@ class NetworkAnalyzer:
             tree_result_dict = tree_builder.build_tree()
 
             analysis_result = NetworkAnalysisResult(
-                roots=tree_result_dict.get('roots', []),
-                nodes=tree_result_dict.get('nodes', []),
-                tree=tree_result_dict.get('tree', {})
+                roots=tree_result_dict.roots, # Используем прямой доступ к атрибутам, т.к. build_tree теперь возвращает NetworkAnalysisResult
+                nodes=tree_result_dict.nodes,
+                tree=tree_result_dict.tree
             )
 
             if output_path:
-                cls.save_tree(tree_result_dict, output_path) # Может выбросить OSError
+                cls.save_tree(analysis_result, output_path) # Передаем объект NetworkAnalysisResult
                 logger.info(f"Результат анализа сохранен в: {output_path} / Analysis result saved to: {output_path}")
             else:
                 logger.info("Output_path не указан, результат анализа не будет сохранен в файл. / Output_path not specified, analysis result will not be saved to a file.")
@@ -210,8 +219,10 @@ class NetworkAnalyzer:
         Сравнивает полученный результат построения дерева с эталонным JSON-файлом.
         Compares the obtained tree construction result with a reference JSON file.
 
-        Использует `TreeComparator.compare` для выполнения сравнения.
-        Uses `TreeComparator.compare` to perform the comparison.
+        Использует `TreeComparator.compare` для выполнения сравнения. `result` (типа `NetworkAnalysisResult`)
+        конвертируется в словарь перед передачей в `TreeComparator`.
+        Uses `TreeComparator.compare` to perform the comparison. The `result` (of type `NetworkAnalysisResult`)
+        is converted to a dictionary before being passed to `TreeComparator`.
 
         Параметры / Parameters:
             result (NetworkAnalysisResult): Результат построения дерева в виде объекта `NetworkAnalysisResult`.

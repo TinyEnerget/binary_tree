@@ -9,9 +9,9 @@ properties of undirected graphs represented as adjacency lists.
 It includes functions for finding connected components, all paths, and the
 shortest path between nodes, as well as calculating general graph statistics.
 """
-import concurrent.futures # Не используется в текущей реализации, но может быть для будущих оптимизаций
-from collections import defaultdict, deque
-from typing import Dict, Set, List, Optional, Any # Добавлен Any для большей гибкости
+# import concurrent.futures # Закомментировано, так как max_workers не используется активно
+from collections import deque # defaultdict не используется напрямую в текущей реализации
+from typing import Dict, Set, List, Optional, Any, Tuple # Tuple добавлен для dfs_stack
 
 
 class UndirectedGraphAnalyzer:
@@ -60,10 +60,10 @@ class UndirectedGraphAnalyzer:
                                          Maximum number of worker threads for potential parallel
                                          operations. Defaults to 8. (Not actively used in current methods).
         """
-        self.graph = graph
-        self.max_workers = max_workers or 8 # Значение по умолчанию, если не указано
+        self.graph: Dict[str, Set[str]] = graph
+        self.max_workers: int = max_workers or 8
         self.components: List[Set[str]] = []
-        self._paths_cache: Dict[Any, Any] = {} # Кэш для путей, пока не используется
+        self._paths_cache: Dict[Tuple[str, str], List[List[str]]] = {} # Ключ: (start_node, end_node), Значение: список путей
 
     def find_connected_components(self) -> List[Set[str]]:
         """
@@ -78,30 +78,29 @@ class UndirectedGraphAnalyzer:
         is stored in `self.components` and also returned.
 
         Возвращает / Returns:
-            List[Set[str]]: Список множеств, где каждое множество содержит узлы одной связной компоненты.
-                            A list of sets, where each set contains the nodes of one connected component.
+            List[Set[str]]: Список множеств строк, где каждое множество содержит ID узлов
+                            одной связной компоненты.
+                            A list of sets of strings, where each set contains the node IDs
+                            of one connected component.
         """
         visited_nodes: Set[str] = set()
         found_components: List[Set[str]] = []
 
-        for node in self.graph:
-            if node not in visited_nodes:
+        for node_id in self.graph: # node_id здесь строка
+            if node_id not in visited_nodes:
                 current_component: Set[str] = set()
-                # Используем BFS для нахождения одной связной компоненты
-                queue: deque[str] = deque([node])
-                visited_nodes.add(node) # Отмечаем узел как посещенный перед добавлением в очередь
-                current_component.add(node)
+                queue: deque[str] = deque([node_id])
+                visited_nodes.add(node_id)
+                current_component.add(node_id)
 
                 while queue:
-                    current_node_from_queue = queue.popleft()
-                    # Соседи уже должны быть отфильтрованы от visited_nodes при добавлении в очередь
-                    # но для безопасности можно проверить еще раз (хотя это может быть избыточно)
-                    for neighbor in self.graph.get(current_node_from_queue, set()):
-                        if neighbor not in visited_nodes:
-                            visited_nodes.add(neighbor)
-                            current_component.add(neighbor)
-                            queue.append(neighbor)
-                if current_component: # Добавляем, только если компонента не пуста
+                    current_node_val = queue.popleft()
+                    for neighbor_val in self.graph.get(current_node_val, set()):
+                        if neighbor_val not in visited_nodes:
+                            visited_nodes.add(neighbor_val)
+                            current_component.add(neighbor_val)
+                            queue.append(neighbor_val)
+                if current_component:
                     found_components.append(current_component)
 
         self.components = found_components
@@ -109,43 +108,43 @@ class UndirectedGraphAnalyzer:
 
     def find_all_paths(self, start_node: str, end_node: str) -> List[List[str]]:
         """
-        Находит все простые пути (без повторения узлов в одном пути) между двумя узлами
+        Находит все простые пути (без повторения узлов в одном пути) между `start_node` и `end_node`
         в графе с использованием поиска в глубину (DFS).
-        Finds all simple paths (no repeated nodes within a single path) between two nodes
+        Finds all simple paths (no repeated nodes within a single path) between `start_node` and `end_node`
         in the graph using Depth-First Search (DFS).
 
         Параметры / Parameters:
-            start_node (str): Начальный узел для поиска пути.
-                              The starting node for the path search.
-            end_node (str): Конечный узел для поиска пути.
-                            The ending node for the path search.
+            start_node (str): ID начального узла для поиска пути.
+                              The ID of the starting node for the path search.
+            end_node (str): ID конечного узла для поиска пути.
+                            The ID of the ending node for the path search.
 
         Возвращает / Returns:
-            List[List[str]]: Список всех найденных путей. Каждый путь представлен как список узлов.
-                             A list of all paths found. Each path is represented as a list of nodes.
-                             Возвращает пустой список, если узлы не существуют или путь не найден.
-                             Returns an empty list if nodes do not exist or no path is found.
+            List[List[str]]: Список всех найденных путей. Каждый путь представлен как список ID узлов (строк).
+                             Возвращает пустой список, если узлы не существуют в графе или путь не найден.
+                             A list of all paths found. Each path is represented as a list of node IDs (strings).
+                             Returns an empty list if nodes do not exist in the graph or no path is found.
         """
         if start_node not in self.graph or end_node not in self.graph:
-            return [] # Если стартовый или конечный узел отсутствует в графе
+            return []
 
-        all_paths: List[List[str]] = []
-        # Стек для DFS: (текущий_узел, текущий_путь_до_него, множество_посещенных_в_этом_пути)
-        dfs_stack: List[Tuple[str, List[str], Set[str]]] = [(start_node, [start_node], {start_node})]
+        all_paths_list: List[List[str]] = []
+        # Стек для DFS: (текущий_узел_str, текущий_путь_list_of_str, множество_посещенных_на_этом_пути_set_of_str)
+        dfs_iter_stack: List[Tuple[str, List[str], Set[str]]] = [(start_node, [start_node], {start_node})]
 
-        while dfs_stack:
-            current_node, current_path, visited_in_path = dfs_stack.pop()
+        while dfs_iter_stack:
+            current_node_val, current_path_list, visited_on_path_set = dfs_iter_stack.pop()
 
-            if current_node == end_node:
-                all_paths.append(list(current_path)) # Добавляем копию пути
-                continue # Путь найден, завершаем эту ветку обхода
+            if current_node_val == end_node:
+                all_paths_list.append(list(current_path_list))
+                continue
 
-            for neighbor in self.graph.get(current_node, set()):
-                if neighbor not in visited_in_path: # Предотвращение циклов в текущем пути
-                    new_path = current_path + [neighbor]
-                    new_visited = visited_in_path | {neighbor} # Создаем новое множество для следующей ветви
-                    dfs_stack.append((neighbor, new_path, new_visited))
-        return all_paths
+            for neighbor_val in self.graph.get(current_node_val, set()):
+                if neighbor_val not in visited_on_path_set:
+                    new_path = current_path_list + [neighbor_val]
+                    new_visited_set = visited_on_path_set | {neighbor_val}
+                    dfs_iter_stack.append((neighbor_val, new_path, new_visited_set))
+        return all_paths_list
 
     def find_shortest_path(self, start_node: str, end_node: str) -> Optional[List[str]]:
         """
@@ -174,29 +173,23 @@ class UndirectedGraphAnalyzer:
 
         # Очередь для BFS: (текущий_узел, путь_до_него)
         bfs_queue: deque[Tuple[str, List[str]]] = deque([(start_node, [start_node])])
-        # Множество для отслеживания всех посещенных узлов, чтобы избежать циклов и повторной обработки
-        visited_globally: Set[str] = {start_node}
-
+        # Множество для отслеживания всех посещенных узлов глобально в этом поиске
+        visited_globally_set: Set[str] = {start_node}
 
         while bfs_queue:
-            current_node, current_path = bfs_queue.popleft()
+            current_node_val, current_path_list = bfs_queue.popleft()
 
-            if current_node == end_node:
-                return current_path # Кратчайший путь найден
+            if current_node_val == end_node:
+                return current_path_list
 
-            # current_node уже добавлен в visited_globally перед помещением в очередь (или при первом посещении)
-            # if current_node in visited_globally: # Эта проверка избыточна, если добавлять в visited при помещении в очередь
-            #     continue
-            # visited_globally.add(current_node) # Перенесено выше/при добавлении в очередь
+            for neighbor_val in self.graph.get(current_node_val, set()):
+                if neighbor_val not in visited_globally_set:
+                    visited_globally_set.add(neighbor_val)
+                    new_path = current_path_list + [neighbor_val]
+                    bfs_queue.append((neighbor_val, new_path))
+        return None
 
-            for neighbor in self.graph.get(current_node, set()):
-                if neighbor not in visited_globally:
-                    visited_globally.add(neighbor) # Отмечаем как посещенный перед добавлением в очередь
-                    new_path = current_path + [neighbor]
-                    bfs_queue.append((neighbor, new_path))
-        return None # Путь не найден
-
-    def graph_statistics(self) -> Dict[str, Any]:
+    def graph_statistics(self) -> Dict[str, Any]: # Возвращаемая структура детализирована в docstring
         """
         Рассчитывает и возвращает основную статистику по графу.
         Calculates and returns basic statistics for the graph.

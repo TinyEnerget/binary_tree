@@ -8,12 +8,13 @@ This module provides utility functions used in various parts of the
 from JSON files and saving data to JSON files.
 """
 import json
-from typing import Dict, Any
-import logging # Добавлено логирование
+from typing import Dict, Any, Union # Union добавлен для Union[str, Path]
+from pathlib import Path # Path добавлен для type hinting
+import logging
 
-logger = logging.getLogger(__name__) # Инициализация логгера для этого модуля
+logger = logging.getLogger(__name__)
 
-def load_json(file_path: str) -> Dict[str, Any]:
+def load_json(file_path: Union[str, Path]) -> Dict[str, Any]:
     """
     Загружает данные из файла формата JSON.
     Loads data from a JSON formatted file.
@@ -39,68 +40,76 @@ def load_json(file_path: str) -> Dict[str, Any]:
         Exception: Другие возможные исключения, связанные с операциями файлового ввода-вывода.
                    Other potential exceptions related to file I/O operations.
     """
-    logger.debug(f"Загрузка JSON из файла: {file_path} / Loading JSON from file: {file_path}")
+    # Преобразуем Path в строку, если необходимо, т.к. open() ожидает str или int (дескриптор файла)
+    file_path_str = str(file_path) if isinstance(file_path, Path) else file_path
+    logger.debug(f"Загрузка JSON из файла: {file_path_str} / Loading JSON from file: {file_path_str}")
     try:
-        with open(file_path, 'r', encoding='utf-8') as file:
+        with open(file_path_str, 'r', encoding='utf-8') as file:
             return json.load(file)
     except FileNotFoundError:
-        logger.error(f"Файл не найден при загрузке: {file_path} / File not found during load: {file_path}")
+        logger.error(f"Файл не найден при загрузке: {file_path_str} / File not found during load: {file_path_str}")
         raise
     except PermissionError as e:
-        logger.error(f"Ошибка прав доступа при загрузке файла: {file_path} - {e} / Permission error during file load: {file_path} - {e}")
+        logger.error(f"Ошибка прав доступа при загрузке файла: {file_path_str} - {e} / Permission error during file load: {file_path_str} - {e}")
         raise
     except json.JSONDecodeError as e:
-        logger.error(f"Ошибка декодирования JSON в файле {file_path}: {e.message} (строка {e.lineno}, столбец {e.colno}) / JSON decoding error in file {file_path}: {e.message} (line {e.lineno}, column {e.colno})")
+        logger.error(f"Ошибка декодирования JSON в файле {file_path_str}: {e.message} (строка {e.lineno}, столбец {e.colno}) / JSON decoding error in file {file_path_str}: {e.message} (line {e.lineno}, column {e.colno})")
         raise
-    except IOError as e: # Более общая ошибка ввода-вывода, если не FileNotFoundError или PermissionError
-        logger.error(f"Ошибка ввода-вывода при загрузке JSON из {file_path}: {e} / IO error loading JSON from {file_path}: {e}")
+    except IOError as e:
+        logger.error(f"Ошибка ввода-вывода при загрузке JSON из {file_path_str}: {e} / IO error loading JSON from {file_path_str}: {e}")
         raise
-    except Exception as e: # Для других непредвиденных ошибок
-        logger.error(f"Непредвиденная ошибка при загрузке JSON из {file_path}: {type(e).__name__} - {e} / Unexpected error loading JSON from {file_path}: {type(e).__name__} - {e}")
+    except Exception as e:
+        logger.error(f"Непредвиденная ошибка при загрузке JSON из {file_path_str}: {type(e).__name__} - {e} / Unexpected error loading JSON from {file_path_str}: {type(e).__name__} - {e}")
         raise
 
-def save_json(file_path: str, data: Dict[str, Any]) -> None:
+def save_json(file_path: Union[str, Path], data: Dict[str, Any]) -> None:
     """
     Сохраняет предоставленные данные (словарь) в файл формата JSON.
     Saves the provided data (dictionary) to a JSON formatted file.
 
-    Данные сохраняются с кодировкой UTF-8, с отступом в 6 пробелов для
-    читаемости и с параметром `ensure_ascii=False` для корректной записи
+    Данные сохраняются с кодировкой UTF-8, с отступом в 4 пробела (стандартный вариант)
+    для читаемости и с параметром `ensure_ascii=False` для корректной записи
     не-ASCII символов (например, кириллицы).
-    The data is saved with UTF-8 encoding, an indent of 6 spaces for
-    readability, and the `ensure_ascii=False` parameter for correct
+    The data is saved with UTF-8 encoding, an indent of 4 spaces (standard practice)
+    for readability, and the `ensure_ascii=False` parameter for correct
     writing of non-ASCII characters (e.g., Cyrillic).
 
     Параметры / Parameters:
-        file_path (str): Строковый путь к файлу, в который будут сохранены данные.
-                         String path to the file where the data will be saved.
+        file_path (Union[str, Path]): Путь (строка или объект Path) к файлу,
+                                      в который будут сохранены данные.
+                                      Path (string or Path object) to the file
+                                      where the data will be saved.
         data (Dict[str, Any]): Словарь с данными для сохранения.
                                A dictionary containing the data to save.
 
     Выбрасывает / Raises:
         OSError: Если происходит ошибка при записи в файл (например, из-за
-                 проблем с правами доступа или если путь недействителен).
+                 проблем с правами доступа или если путь недействителен),
+                 включая `PermissionError`.
                  If an error occurs while writing to the file (e.g., due to
-                 permission issues or if the path is invalid).
+                 permission issues or if the path is invalid), including `PermissionError`.
+        TypeError: Если данные `data` не могут быть сериализованы в JSON.
+                   If the `data` cannot be serialized to JSON.
         Exception: Другие возможные исключения, связанные с операциями файлового ввода-вывода.
                    Other potential exceptions related to file I/O operations.
     """
-    logger.debug(f"Сохранение данных в JSON-файл: {file_path} / Saving data to JSON file: {file_path}")
+    file_path_str = str(file_path) if isinstance(file_path, Path) else file_path
+    logger.debug(f"Сохранение данных в JSON-файл: {file_path_str} / Saving data to JSON file: {file_path_str}")
     try:
-        with open(file_path, 'w', encoding='utf-8') as file:
-            json.dump(data, file, indent=4, ensure_ascii=False) # Изменен отступ на 4 для большей распространенности
-        logger.info(f"Данные успешно сохранены в {file_path} / Data successfully saved to {file_path}")
+        with open(file_path_str, 'w', encoding='utf-8') as file:
+            json.dump(data, file, indent=4, ensure_ascii=False)
+        logger.info(f"Данные успешно сохранены в {file_path_str} / Data successfully saved to {file_path_str}")
     except PermissionError as e:
-        logger.error(f"Ошибка прав доступа при сохранении файла: {file_path} - {e} / Permission error during file save: {file_path} - {e}")
+        logger.error(f"Ошибка прав доступа при сохранении файла: {file_path_str} - {e} / Permission error during file save: {file_path_str} - {e}")
         raise
     except TypeError as e: # Может возникнуть, если `data` несериализуемо в JSON
-        logger.error(f"Ошибка типа данных при сериализации в JSON для файла {file_path}: {e} / Data type error during JSON serialization for file {file_path}: {e}")
+        logger.error(f"Ошибка типа данных при сериализации в JSON для файла {file_path_str}: {e} / Data type error during JSON serialization for file {file_path_str}: {e}")
         raise
-    except OSError as e: # Более общая ошибка ввода-вывода, если не PermissionError
-        logger.error(f"Ошибка ввода-вывода при сохранении JSON в файл {file_path}: {e} / OS error while saving JSON to file {file_path}: {e}")
+    except OSError as e:
+        logger.error(f"Ошибка ввода-вывода при сохранении JSON в файл {file_path_str}: {e} / OS error while saving JSON to file {file_path_str}: {e}")
         raise
-    except Exception as e: # Для других непредвиденных ошибок
-        logger.error(f"Непредвиденная ошибка при сохранении JSON в {file_path}: {type(e).__name__} - {e} / Unexpected error saving JSON to {file_path}: {type(e).__name__} - {e}")
+    except Exception as e:
+        logger.error(f"Непредвиденная ошибка при сохранении JSON в {file_path_str}: {type(e).__name__} - {e} / Unexpected error saving JSON to {file_path_str}: {type(e).__name__} - {e}")
         raise
 
 def rewrite_nodes(model: dict) -> dict:

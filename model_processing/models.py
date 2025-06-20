@@ -75,9 +75,9 @@ class NetworkElement:
     """
     id: str
     name: str
-    element_type: ElementType # При парсинге может быть временно str, если тип неизвестен, но в итоге должен быть ElementType
-    nodes: List[int]
-    data: Dict[str, Any]
+    element_type: ElementType # Должен быть ElementType после успешного парсинга
+    nodes: List[int] # ID узлов, к которым подключен элемент
+    data: Dict[str, Any] # Остальные данные из JSON для этого элемента
 
 
 class NetworkModelError(Exception):
@@ -150,17 +150,17 @@ class NetworkModel:
 
         self.raw_data: Dict[str, Any] = model_data
         self.elements: Dict[str, NetworkElement] = {}
-        self.node_connections: Dict[str, List[str]] = {}
-        self.analyzers: Dict[Union[ElementType, str], 'ElementAnalyzer'] = {}
+        self.node_connections: Dict[str, List[str]] = {} # Ключ: ID узла (строка), Значение: список ID элементов (строки)
+        self.analyzers: Dict[ElementType, 'ElementAnalyzer'] = {} # Ключ - ElementType enum
 
         try:
             self._register_default_analyzers()
-            self._parse_model() # Должен вызываться после _register_default_analyzers
-        except NetworkModelError: # Перехватываем ошибки, которые уже NetworkModelError
+            self._parse_model()
+        except NetworkModelError:
             raise
-        except Exception as e: # Другие неожиданные ошибки при инициализации
-            msg = f"Непредвиденная ошибка при инициализации NetworkModel: {e} / Unexpected error during NetworkModel initialization: {e}"
-            logger.error(msg)
+        except Exception as e:
+            msg = f"Непредвиденная ошибка при инициализации NetworkModel: {type(e).__name__} - {e} / Unexpected error during NetworkModel initialization: {type(e).__name__} - {e}"
+            logger.exception(msg) # Используем exception для полного стека вызовов
             raise NetworkModelError(msg) from e
         
         logger.debug("Модель инициализирована: %d элементов, %d узлов с соединениями / Model initialized: %d elements, %d nodes with connections",
@@ -220,21 +220,21 @@ class NetworkModel:
             logger.error("Ошибка импорта при регистрации анализаторов (AnalyzerRegistry или его зависимости): %s / Import error during analyzer registration (AnalyzerRegistry or its dependencies): %s", e, e)
             raise NetworkModelError(f"Не удалось импортировать AnalyzerRegistry или его зависимости: {e}") from e
         except Exception as e:
-            logger.error("Непредвиденная ошибка при регистрации анализаторов: %s / Unexpected error during analyzer registration: %s", e, e)
+            logger.error("Непредвиденная ошибка при регистрации анализаторов: {type(e).__name__} - {e} / Unexpected error during analyzer registration: {type(e).__name__} - {e}")
             raise NetworkModelError(f"Не удалось зарегистрировать анализаторы: {e}") from e
 
-    @lru_cache(maxsize=None) # Кэширование результатов для повышения производительности
-    def get_analyzer(self, element_type: Union[ElementType, str]) -> Optional['ElementAnalyzer']:
+    @lru_cache(maxsize=None)
+    def get_analyzer(self, element_type: ElementType) -> Optional['ElementAnalyzer']:
         """
-        Возвращает зарегистрированный анализатор для указанного типа элемента.
-        Returns the registered analyzer for the specified element type.
+        Возвращает зарегистрированный анализатор для указанного типа элемента `ElementType`.
+        Returns the registered analyzer for the specified `ElementType`.
 
         Использует кэширование `@lru_cache` для быстрого повторного доступа.
         Uses `@lru_cache` for fast repeated access.
 
         Параметры / Parameters:
-            element_type (Union[ElementType, str]): Тип элемента (объект `ElementType` или строка).
-                                                    The element type (`ElementType` object or string).
+            element_type (ElementType): Тип элемента (объект `ElementType`).
+                                        The element type (`ElementType` object).
 
         Возвращает / Returns:
             Optional['ElementAnalyzer']: Экземпляр анализатора для данного типа элемента
@@ -242,18 +242,10 @@ class NetworkModel:
                                          An analyzer instance for the given element type,
                                          or None if no analyzer is found.
         """
+        # Ключом в self.analyzers теперь всегда является ElementType
         analyzer = self.analyzers.get(element_type)
         if not analyzer:
-            # Если тип элемента - строка, пытаемся найти анализатор для ElementType(строка)
-            if isinstance(element_type, str):
-                try:
-                    enum_type = ElementType(element_type)
-                    analyzer = self.analyzers.get(enum_type)
-                except ValueError:
-                    pass # Тип строки не соответствует ни одному ElementType
-
-            if not analyzer: # Если все еще не найден
-                logger.warning("Анализатор для типа '%s' не найден. / Analyzer for type '%s' not found.", element_type, element_type)
+            logger.warning("Анализатор для типа ElementType '%s' не найден. / Analyzer for ElementType '%s' not found.", element_type.value if isinstance(element_type, Enum) else element_type)
         return analyzer
 
     def _parse_model(self) -> None:

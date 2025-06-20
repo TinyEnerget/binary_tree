@@ -20,6 +20,7 @@
 
 TODO: Добавить методы для проверки входных данных и обработки ошибок.
 """
+from typing import List, Optional, Any # Any пока оставим, если value может быть не только str
 
 # Imports
 
@@ -28,51 +29,65 @@ class Node:
     Представляет узел в древовидной структуре данных со значением и дочерними узлами.
     Represents a node in a tree data structure with a value and child nodes.
 
-    Атрибуты:
-        value (str): Значение, хранящееся в узле.
-        children (list): Список дочерних узлов, связанных с этим узлом.
-    Attributes:
-        value (str): The value stored in the node.
-        children (list): A list of child nodes connected to this node.
-
-    Методы:
-        add_child(child_node): Добавляет дочерний узел к списку дочерних узлов текущего узла.
-        remove_child(child_node): Удаляет указанный дочерний узел из списка дочерних узлов текущего узла.
-    Methods:
-        add_child(child_node): Adds a child node to the current node's children.
-        remove_child(child_node): Removes a specified child node from the current node's children.
+    Атрибуты / Attributes:
+        value (str): Значение, хранящееся в узле. Предполагается строковым,
+                     так как ID элементов обычно строки.
+                     The value stored in the node. Assumed to be a string,
+                     as element IDs are typically strings.
+        children (List['Node']): Список дочерних узлов (экземпляров `Node`), связанных с этим узлом.
+                                 A list of child nodes (`Node` instances) connected to this node.
     """
 
-    def __init__(self,
-                 value: str):
+    def __init__(self, value: str):
         """
         Инициализирует новый узел с заданным значением.
+        Initializes a new node with the given value.
 
-        Параметры:
-            value (str): Значение, которое будет присвоено узлу.
+        Параметры / Parameters:
+            value (str): Значение, которое будет присвоено узлу. Ожидается строка.
+                         The value to be assigned to the node. Expected to be a string.
         """
-        self.value = value # Наименование узла
-        self.children = [] # Список дочерних узлов
+        self.value: str = value
+        self.children: List['Node'] = []
 
-    def add_child(self, child_node):
+    def add_child(self, child_node: 'Node') -> None:
         """
         Добавляет дочерний узел к текущему узлу.
+        Adds a child node to the current node.
 
-        Параметры:
-            child_node (Node): Узел, который будет добавлен как дочерний.
+        Параметры / Parameters:
+            child_node ('Node'): Узел (экземпляр `Node`), который будет добавлен как дочерний.
+                                The node (`Node` instance) to be added as a child.
         """
+        if not isinstance(child_node, Node):
+            # Можно добавить более строгую проверку или логирование, если тип не Node
+            # For now, assuming child_node will always be a Node instance due to type hint.
+            pass
         self.children.append(child_node)
 
-    def remove_child(self, child_node):
+    def remove_child(self, child_node: 'Node') -> None:
         """
-        Удаляет дочерний узел из текущего узла.
+        Удаляет указанный дочерний узел из списка дочерних узлов текущего узла.
+        Removes the specified child node from the current node's list of children.
 
-        Параметры:
-            child_node (Node): Узел, который будет удален из дочерних.
+        Если дочерний узел не найден в списке, метод вызовет `ValueError`.
+        If the child node is not found in the list, the method will raise a `ValueError`.
+
+        Параметры / Parameters:
+            child_node ('Node'): Узел (экземпляр `Node`), который должен быть удален.
+                                The node (`Node` instance) to be removed.
+        Выбрасывает / Raises:
+            ValueError: Если `child_node` не является дочерним узлом.
+                        If `child_node` is not a child of this node.
         """
-        self.children.remove(child_node)
+        try:
+            self.children.remove(child_node)
+        except ValueError:
+            # Логирование или специфическая обработка, если узел не найден
+            # logger.warning(f"Попытка удалить несуществующий дочерний узел: {child_node.value} из родителя {self.value}")
+            raise # Перевыбрасываем ValueError, чтобы поведение было стандартным
 
-    def print_tree(self, level=0, prefix="Root: "):
+    def print_tree(self, level: int = 0, prefix: str = "Root: ") -> None:
         """
         Выводит древовидную структуру в консоль, начиная с текущего узла.
 

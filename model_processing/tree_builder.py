@@ -17,10 +17,10 @@ hierarchical relationships (parent-child) between network elements.
 The result is a dictionary describing root nodes, all nodes (elements),
 and the parent-child relationship structure.
 """
-from typing import Dict, Any, List # Добавлен List для типизации
-from .models import NetworkModel # NetworkElement, ElementType не используются напрямую в аннотациях этого файла
+from typing import Dict, Any, List
+from .models import NetworkModel, NetworkAnalysisResult # Импортируем NetworkAnalysisResult
 
-import logging # Добавлено логирование
+import logging
 logger = logging.getLogger(__name__)
 
 class NetworkTreeBuilder:
@@ -64,71 +64,58 @@ class NetworkTreeBuilder:
         self.model = model
         logger.info("NetworkTreeBuilder инициализирован с моделью. / NetworkTreeBuilder initialized with a model.")
 
-    def build_tree(self) -> Dict[str, Any]:
+    def build_tree(self) -> NetworkAnalysisResult:
         """
-        Строит и возвращает древовидное представление сети на основе `self.model`.
-        Builds and returns a tree-like representation of the network based on `self.model`.
+        Строит и возвращает древовидное представление сети в виде объекта `NetworkAnalysisResult`.
+        Builds and returns a tree-like representation of the network as a `NetworkAnalysisResult` object.
 
         Процесс включает:
-        1. Получение списка всех элементов (узлов графа дерева) из модели.
+        1. Получение списка ID всех элементов из модели.
         2. Определение корневых элементов с помощью метода `self.model.get_root_elements()`.
-        3. Итерацию по каждому элементу модели:
-           a. Получение соответствующего анализатора для типа текущего элемента.
-           b. Вызов метода `get_children()` этого анализатора для определения списка
-              прямых дочерних элементов.
-           c. Сохранение этой информации в общую структуру дерева.
+        3. Итерацию по каждому элементу модели для определения его дочерних элементов
+           с использованием соответствующего анализатора (`analyzer.get_children()`).
+        4. Формирование и возврат экземпляра `NetworkAnalysisResult`, содержащего
+           списки ID корневых элементов, всех элементов и словарь связей "родитель-потомок".
 
-        Если для элемента не найден анализатор или элемент отсутствует, он все равно
-        включается в выходную структуру `tree` с пустым списком дочерних элементов.
+        Если для элемента не найден анализатор или элемент отсутствует (хотя он есть в общем списке ID),
+        он будет включен в результирующую структуру `tree` с пустым списком дочерних элементов.
         The process includes:
-        1. Getting a list of all elements (nodes of the tree graph) from the model.
+        1. Getting a list of IDs of all elements from the model.
         2. Identifying root elements using `self.model.get_root_elements()`.
-        3. Iterating through each element in the model:
-           a. Retrieving the appropriate analyzer for the current element's type.
-           b. Calling the analyzer's `get_children()` method to determine the list
-              of direct child elements.
-           c. Storing this information in the overall tree structure.
+        3. Iterating through each element in the model to determine its children
+           using the appropriate analyzer (`analyzer.get_children()`).
+        4. Forming and returning a `NetworkAnalysisResult` instance containing
+           lists of root element IDs, all element IDs, and a dictionary of parent-child relationships.
 
-        If no analyzer is found for an element or the element is missing, it is still
-        included in the output `tree` structure with an empty list of children.
+        If no analyzer is found for an element or an element is missing (though present in the overall ID list),
+        it will be included in the resulting `tree` structure with an empty list of children.
 
         Возвращает / Returns:
-            Dict[str, Any]: Словарь, представляющий построенное дерево (или лес).
-                            Содержит следующие ключи:
-                            - 'roots' (List[str]): Список идентификаторов (ID) корневых элементов.
-                            - 'nodes' (List[str]): Список ID всех элементов, присутствующих в модели.
-                            - 'tree' (Dict[str, Dict[str, List[str]]]): Словарь, описывающий связи.
-                              Ключ - ID родительского элемента. Значение - словарь с одним ключом 'child',
-                              значение которого - список ID прямых дочерних элементов этого родителя.
-                            A dictionary representing the constructed tree (or forest).
-                            It contains the following keys:
-                            - 'roots' (List[str]): A list of root element identifiers (IDs).
-                            - 'nodes' (List[str]): A list of IDs of all elements present in the model.
-                            - 'tree' (Dict[str, Dict[str, List[str]]]): A dictionary describing relationships.
-                              The key is the parent element's ID. The value is a dictionary with a single
-                              key 'child', whose value is a list of IDs of the direct children of that parent.
+            NetworkAnalysisResult: Экземпляр `NetworkAnalysisResult`, содержащий
+                                   `roots` (List[str]), `nodes` (List[str]),
+                                   и `tree` (Dict[str, Dict[str, List[str]]]).
+                                   An instance of `NetworkAnalysisResult` containing
+                                   `roots` (List[str]), `nodes` (List[str]),
+                                   and `tree` (Dict[str, Dict[str, List[str]]]).
         """
         logger.info("Начало построения дерева сети... / Starting to build the network tree...")
-        # Структура для хранения информации о дочерних элементах для каждого узла
-        tree_connections: Dict[str, Dict[str, List[str]]] = {}
 
-        # Получаем все ID элементов из модели
+        tree_connections: Dict[str, Dict[str, List[str]]] = {}
         all_element_ids: List[str] = list(self.model.elements.keys())
+
         if not all_element_ids:
             logger.warning("В модели нет элементов для построения дерева. / No elements in the model to build a tree.")
-            return {"roots": [], "nodes": [], "tree": {}}
+            return NetworkAnalysisResult(roots=[], nodes=[], tree={})
 
-        # Определяем корневые элементы
         root_ids: List[str] = self.model.get_root_elements()
         logger.debug(f"Обнаружены корневые элементы: {root_ids} / Root elements detected: {root_ids}")
 
-        # Итерируемся по каждому элементу в модели для определения его дочерних элементов
         for element_id in all_element_ids:
             element = self.model.get_element(element_id)
 
             if not element:
-                logger.warning(f"Элемент с ID '{element_id}' не найден в модели во время построения дерева. Пропуск. / Element with ID '{element_id}' not found in model during tree building. Skipping.")
-                tree_connections[element_id] = {"child": []} # Добавляем с пустыми детьми, если узел есть в all_element_ids, но не получен
+                logger.warning(f"Элемент с ID '{element_id}' не найден в модели во время построения дерева. Он будет иметь пустой список дочерних элементов. / Element with ID '{element_id}' not found in model during tree building. It will have an empty child list.")
+                tree_connections[element_id] = {"child": []}
                 continue
                 
             analyzer = self.model.get_analyzer(element.element_type)
@@ -142,14 +129,15 @@ class NetworkTreeBuilder:
                     children_ids = analyzer.get_children(element, self.model)
                     logger.debug(f"Для элемента '{element_id}' (тип: {element.element_type}) найдены дочерние элементы: {children_ids} / For element '{element_id}' (type: {element.element_type}) found children: {children_ids}")
                 except Exception as e:
-                    logger.error(f"Ошибка при получении дочерних элементов для '{element_id}' (тип: {element.element_type}): {e} / Error getting children for '{element_id}' (type: {element.element_type}): {e}")
+                    logger.exception(f"Ошибка при получении дочерних элементов для '{element_id}' (тип: {element.element_type}): {e} / Error getting children for '{element_id}' (type: {element.element_type}): {e}")
                     children_ids = []
 
             tree_connections[element_id] = {"child": children_ids}
-        
+
         logger.info(f"Построение дерева завершено. Найдено {len(root_ids)} корней, обработано {len(all_element_ids)} узлов. / Tree building finished. Found {len(root_ids)} roots, processed {len(all_element_ids)} nodes.")
-        return {
-            "roots": root_ids,
-            "nodes": all_element_ids,
-            "tree": tree_connections
-        }
+
+        return NetworkAnalysisResult(
+            roots=root_ids,
+            nodes=all_element_ids,
+            tree=tree_connections
+        )

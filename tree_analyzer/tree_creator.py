@@ -6,14 +6,14 @@
 """
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Set as TypingList, Optional # Added Optional
+from typing import Dict, Any, List as TypingList, Optional, Set as TypingSet # Added Set
 import sys
 import os
 # Добавляем родительскую директорию в путь
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tree_analyzer.tree_construction import Node
+from tree_analyzer.tree_construction import Node # Node is imported
 from model_processing import NetworkAnalyzer
-from model_processing.models import NetworkAnalysisResult
+from model_processing.models import NetworkAnalysisResult # NetworkAnalysisResult is imported
 
 import logging
 # Настройка логирования
@@ -46,41 +46,45 @@ class TreeCreator:
         Инициализирует объект TreeCreator.
 
         Либо `analysis_result` должен быть предоставлен, либо `model_path` и `out_path`
-        (для выполнения анализа). Если `analysis_result` предоставлен, `model_path` и `out_path` игнорируются
-        для этапа анализа, но могут быть использованы для других целей, если класс будет расширен.
+        (для выполнения анализа). Если `analysis_result` предоставлен, `model_path` и `out_path`
+        (если они переданы) используются только для информационных целей или если будущие методы
+        будут их требовать; основной анализ через `NetworkAnalyzer` в этом случае не выполняется.
 
         Initializes the TreeCreator object.
 
         Either `analysis_result` must be provided, or both `model_path` and `out_path`
         (for performing the analysis). If `analysis_result` is provided, `model_path` and `out_path`
-        are ignored for the analysis step but might be used for other purposes if the class is extended.
+        (if passed) are used for informational purposes only or if future methods require them;
+        the main analysis via `NetworkAnalyzer` is not performed in this case.
 
         Параметры / Parameters:
-            model_path (Optional[str]): Путь к файлу модели.
-                                        Path to the model file.
-            out_path (Optional[str]): Путь для сохранения файла с результатами анализа `NetworkAnalyzer`.
-                                      Path to save the analysis results file by `NetworkAnalyzer`.
+            model_path (Optional[str]): Путь к файлу модели (строка).
+                                        Path to the model file (string).
+            out_path (Optional[str]): Путь для сохранения файла с результатами анализа `NetworkAnalyzer` (строка).
+                                      Path to save the analysis results file by `NetworkAnalyzer` (string).
             analysis_result (Optional[NetworkAnalysisResult]): Предварительно полученный результат анализа сети.
                                                                Pre-obtained network analysis result.
         """
         if analysis_result:
             if not isinstance(analysis_result, NetworkAnalysisResult):
-                raise TypeError("Предоставленный analysis_result должен быть экземпляром NetworkAnalysisResult. / Provided analysis_result must be an instance of NetworkAnalysisResult.")
-            self.result = analysis_result
-            # model_path и out_path могут быть None, если результат уже есть
-            self.model_path = Path(model_path) if model_path else None
-            self.out_path = Path(out_path) if out_path else None
+                msg = "Предоставленный analysis_result должен быть экземпляром NetworkAnalysisResult. / Provided analysis_result must be an instance of NetworkAnalysisResult."
+                logger.error(msg)
+                raise TypeError(msg)
+            self.result: Optional[NetworkAnalysisResult] = analysis_result # Уточняем тип атрибута экземпляра
+            # model_path и out_path могут быть None или предоставлены для других нужд.
+            self.model_path: Optional[Path] = Path(model_path) if model_path else None
+            self.out_path: Optional[Path] = Path(out_path) if out_path else None
             logger.info("TreeCreator инициализирован с предварительно загруженным NetworkAnalysisResult. / TreeCreator initialized with pre-loaded NetworkAnalysisResult.")
-        elif model_path and out_path:
+        elif model_path and out_path: # out_path тоже должен быть здесь обязательным
             input_file = Path(model_path)
             if not input_file.exists():
-                logger.error(f"Входной файл модели {input_file} не найден. / Model input file {input_file} not found.")
-                # Рекомендуется выбрасывать исключение, если файл критичен и результат не предоставлен
-                raise FileNotFoundError(f"Входной файл модели {input_file} не найден. / Model input file {input_file} not found.")
+                msg = f"Входной файл модели {input_file} не найден. / Model input file {input_file} not found."
+                logger.error(msg)
+                raise FileNotFoundError(msg)
             self.model_path = input_file
             self.out_path = Path(out_path)
             self.result = None
-            logger.info(f"TreeCreator инициализирован с путями: model_path='{model_path}', out_path='{out_path}'. / TreeCreator initialized with paths: model_path='{model_path}', out_path='{out_path}'.")
+            logger.info(f"TreeCreator инициализирован с путями: model_path='{self.model_path}', out_path='{self.out_path}'. / TreeCreator initialized with paths: model_path='{self.model_path}', out_path='{self.out_path}'.")
         else:
             msg = "Необходимо предоставить либо 'analysis_result', либо 'model_path' и 'out_path'. / Either 'analysis_result' or both 'model_path' and 'out_path' must be provided."
             logger.error(msg)
@@ -157,60 +161,79 @@ class TreeCreator:
         """
         self._ensure_analysis_result() # Гарантируем, что self.result доступен
         
-        # После _ensure_analysis_result, self.result не должен быть None и должен быть NetworkAnalysisResult
-        if not isinstance(self.result, NetworkAnalysisResult):
-            logger.warning("Результаты анализа модели (self.result) отсутствуют или имеют неверный тип. Невозможно построить дерево. / Model analysis results (self.result) are missing or have an incorrect type. Cannot build tree.")
-            return []
+        # После _ensure_analysis_result, self.result здесь гарантированно NetworkAnalysisResult
+        # поэтому дополнительная проверка isinstance не обязательна, но может остаться для безопасности.
+        if not isinstance(self.result, NetworkAnalysisResult) : # Should ideally not happen if _ensure_analysis_result works
+             logger.critical("self.result не является NetworkAnalysisResult даже после _ensure_analysis_result. Логическая ошибка. / self.result is not NetworkAnalysisResult even after _ensure_analysis_result. Logical error.")
+             return []
 
-        # Доступ к данным через атрибуты объекта NetworkAnalysisResult
-        tree_dict: Dict[str, Dict[str, Optional[str]]] = self.result.tree
-        all_node_ids: TypingList[str] = self.result.nodes
-        root_ids_from_result: TypingList[str] = self.result.roots
 
-        if not tree_dict or not all_node_ids:
-            logger.warning("Данные дерева (tree_dict) или список узлов (all_node_ids) пусты в NetworkAnalysisResult. Невозможно построить дерево. / Tree data (tree_dict) or node list (all_node_ids) is empty in NetworkAnalysisResult. Cannot build tree.")
+        tree_data: Dict[str, Dict[str, TypingList[str]]] = self.result.tree
+        all_element_ids: TypingList[str] = self.result.nodes
+        root_element_ids: TypingList[str] = self.result.roots
+
+        if not tree_data and not all_element_ids : # Если и дерево и список узлов пусты (например, пустая модель)
+            logger.warning("Данные дерева (tree) и список узлов (nodes) пусты в NetworkAnalysisResult. Возвращается пустое дерево. / Tree data and node list are empty in NetworkAnalysisResult. Returning an empty tree.")
             return []
+        if not all_element_ids and tree_data: # Есть структура дерева, но нет списка узлов - странно
+             logger.warning("Список узлов (all_node_ids) пуст, но есть данные дерева (tree_data) в NetworkAnalysisResult. Попытка построить дерево. / Node list (all_node_ids) is empty, but tree data exists in NetworkAnalysisResult. Attempting to build tree.")
+             # Можно попробовать извлечь all_element_ids из ключей tree_data и всех children, но это может быть неполно.
+             # Для большей надежности, если all_node_ids пуст, лучше вернуть [], если это не ожидается.
+             # all_element_ids = list(tree_data.keys()) # Это будет неполно, если есть узлы без детей или только как дети.
 
         created_nodes: Dict[str, Node] = {}
 
-        # Создаем все узлы (экземпляры Node)
-        for node_id in all_node_ids:
-            node = Node(node_id)
-            created_nodes[node_id] = node
+        for node_id_str in all_element_ids:
+            node = Node(str(node_id_str)) # Убедимся, что ID узла - строка
+            created_nodes[str(node_id_str)] = node
 
-        # Устанавливаем связи между узлами на основе tree_dict
-        for parent_id, connection_info in tree_dict.items():
-            parent_node_obj = created_nodes.get(parent_id)
-            if parent_node_obj and 'child' in connection_info:
-                for child_id_str in connection_info['child']:
-                    child_node_obj = created_nodes.get(child_id_str)
-                    if child_node_obj:
-                        parent_node_obj.add_child(child_node_obj)
+        for parent_id_str_raw, connection_info in tree_data.items():
+            parent_id_str = str(parent_id_str_raw)
+            parent_node_obj = created_nodes.get(parent_id_str)
+
+            if parent_node_obj:
+                if isinstance(connection_info, dict) and 'child' in connection_info:
+                    child_ids_list = connection_info['child']
+                    if isinstance(child_ids_list, list):
+                        for child_id_raw in child_ids_list:
+                            child_id_str = str(child_id_raw)
+                            child_node_obj = created_nodes.get(child_id_str)
+                            if child_node_obj:
+                                parent_node_obj.add_child(child_node_obj)
+                            else:
+                                logger.warning(f"Дочерний узел с ID '{child_id_str}' для родителя '{parent_id_str}' не найден в created_nodes. / Child node with ID '{child_id_str}' for parent '{parent_id_str}' not found in created_nodes.")
                     else:
-                        logger.warning(f"Дочерний узел с ID '{child_id_str}' не найден в created_nodes для родителя '{parent_id}'. / Child node with ID '{child_id_str}' not found in created_nodes for parent '{parent_id}'.")
-            elif not parent_node_obj:
-                 logger.warning(f"Родительский узел с ID '{parent_id}' из tree_dict не найден в created_nodes. / Parent node with ID '{parent_id}' from tree_dict not found in created_nodes.")
+                        logger.warning(f"Для родителя '{parent_id_str}' поле 'child' не является списком: {child_ids_list}. / For parent '{parent_id_str}', 'child' field is not a list: {child_ids_list}.")
+                else:
+                    logger.warning(f"Для родителя '{parent_id_str}' отсутствует ключ 'child' или данные не являются словарем: {connection_info}. / For parent '{parent_id_str}', 'child' key is missing or data is not a dictionary: {connection_info}.")
+            elif parent_id_str in all_element_ids : # Если ID родителя был в общем списке, но узел не создался (не должно быть)
+                 logger.error(f"Родительский узел с ID '{parent_id_str}' из tree_data не найден в created_nodes, хотя должен был быть создан. Логическая ошибка. / Parent node with ID '{parent_id_str}' from tree_data not found in created_nodes, though it should have been created. Logical error.")
+
 
         # Формируем список корневых узлов
-        actual_roots: TypingList[Node] = [created_nodes[root_id] for root_id in root_ids_from_result if root_id in created_nodes]
+        actual_roots: TypingList[Node] = [created_nodes[str(root_id)] for root_id in root_element_ids if str(root_id) in created_nodes]
         
-        # Логика автоматического определения корней, если они не были заданы явно
-        if not actual_roots and all_node_ids:
-             logger.info("Корневые узлы не были предоставлены в NetworkAnalysisResult или не найдены. Попытка автоматического определения. / Root nodes were not provided in NetworkAnalysisResult or not found. Attempting automatic detection.")
-             all_children_ids: Optional[str] = set()
-             for connection_info in tree_dict.values():
-                 all_children_ids.update(connection_info.get('child', []))
+        if not actual_roots and all_element_ids:
+             logger.info("Корневые узлы не были предоставлены или не найдены в NetworkAnalysisResult. Попытка автоматического определения. / Root nodes were not provided or not found in NetworkAnalysisResult. Attempting automatic detection.")
+             all_children_ids_set: TypingSet[str] = set()
+             for parent_id_str_raw, connection_info in tree_data.items():
+                 if isinstance(connection_info, dict) and 'child' in connection_info and isinstance(connection_info['child'], list):
+                     for child_id_raw in connection_info['child']:
+                         all_children_ids_set.add(str(child_id_raw))
 
-             potential_roots = [created_nodes[node_id] for node_id in all_node_ids if node_id not in all_children_ids and node_id in created_nodes]
+             potential_roots = [created_nodes[node_id_str] for node_id_str in all_element_ids if node_id_str not in all_children_ids_set and node_id_str in created_nodes]
 
-             if not potential_roots and all_node_ids:
-                 logger.warning("Не удалось автоматически определить корневые узлы. / Failed to automatically determine root nodes.")
+             if not potential_roots and all_element_ids: # Если все узлы являются чьими-то детьми или нет узлов вообще
+                 logger.warning("Не удалось автоматически определить корневые узлы (возможно, циклическая структура или нет узлов). / Failed to automatically determine root nodes (possibly cyclic structure or no nodes).")
+                 # Если есть узлы, но все они чьи-то дети, это может быть циклическая структура или один узел-корень, который также является чьим-то ребенком (что странно для дерева).
+                 # В таком случае, можно вернуть первый узел из all_node_ids, если он есть, или пустой список.
+                 # if all_element_ids and created_nodes: return [created_nodes[all_element_ids[0]]]
                  return []
              actual_roots = potential_roots
              logger.info(f"Автоматически определенные корневые узлы: {[r.value for r in actual_roots]} / Automatically determined root nodes: {[r.value for r in actual_roots]}")
 
-        if not actual_roots:
-            logger.warning("Не удалось сформировать список корневых узлов. / Failed to form the list of root nodes.")
+        if not actual_roots: # Если и после автоматического определения корней нет
+            logger.warning("Не удалось сформировать список корневых узлов ни из предоставленных, ни автоматически. / Failed to form list of root nodes either from provided or automatically.")
 
         return actual_roots
 if __name__ == '__main__':

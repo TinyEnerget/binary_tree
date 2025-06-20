@@ -7,15 +7,14 @@
 """
 import json
 from pathlib import Path
-from typing import Dict, Any, Set, Optional #as TypingOptional # Добавлены Set и Optional
+from typing import Dict, Any, Set, Optional as TypingOptional, Union # Добавлен Union
 from collections import defaultdict
 import sys
 import os
 # Добавляем родительскую директорию в путь
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from model_processing import NetworkAnalyzer
-from model_processing import NetworkModelError
-from model_processing.models import NetworkAnalysisResult # Импорт NetworkAnalysisResult
+from model_processing.models import NetworkAnalysisResult
 
 import logging
 # Настройка логирования
@@ -55,7 +54,7 @@ class GraphCreator:
                                                   Can be provided during initialization or obtained
                                                   by calling `_ensure_analysis_result()`.
     """
-    def __init__(self, out_path: str, model_path: Optional[str] = None, analysis_result: Optional[NetworkAnalysisResult] = None):
+    def __init__(self, out_path: str, model_path: TypingOptional[str] = None, analysis_result: TypingOptional[NetworkAnalysisResult] = None):
         """
         Инициализирует объект GraphCreator.
 
@@ -74,29 +73,31 @@ class GraphCreator:
                             Также используется как `out_path` для `NetworkAnalyzer`, если `model_path` задан.
                             String path for saving the graph file (`output_graph.json`).
                             Also used as `out_path` for `NetworkAnalyzer` if `model_path` is provided.
-            model_path (Optional[str]): Путь к файлу модели.
-                                        Path to the model file.
+            model_path (Optional[str]): Путь к файлу модели (строка).
+                                        Path to the model file (string).
             analysis_result (Optional[NetworkAnalysisResult]): Предварительно полученный результат анализа сети.
                                                                Pre-obtained network analysis result.
         """
-        # self.out_path уже Path. Если out_path передается как строка:
-        self.out_path = Path(out_path) if isinstance(out_path, str) else out_path
+        self.out_path: Path = Path(out_path) # out_path обязателен и преобразуется в Path
 
         if analysis_result:
             if not isinstance(analysis_result, NetworkAnalysisResult):
-                raise TypeError("Предоставленный analysis_result должен быть экземпляром NetworkAnalysisResult. / Provided analysis_result must be an instance of NetworkAnalysisResult.")
-            self.result = analysis_result
-            self.model_path = Path(model_path) if model_path else None
+                msg = "Предоставленный analysis_result должен быть экземпляром NetworkAnalysisResult. / Provided analysis_result must be an instance of NetworkAnalysisResult."
+                logger.error(msg)
+                raise TypeError(msg)
+            self.result: TypingOptional[NetworkAnalysisResult] = analysis_result
+            self.model_path: TypingOptional[Path] = Path(model_path) if model_path else None
             logger.info("GraphCreator инициализирован с предварительно загруженным NetworkAnalysisResult. out_path используется для сохранения графа. / GraphCreator initialized with pre-loaded NetworkAnalysisResult. out_path is used for saving the graph.")
-        elif model_path: # out_path здесь также используется для NetworkAnalyzer
+        elif model_path:
             input_file = Path(model_path)
             if not input_file.exists():
-                logger.error(f"Входной файл модели {input_file} не найден. / Model input file {input_file} not found.")
-                raise FileNotFoundError(f"Входной файл модели {input_file} не найден. / Model input file {input_file} not found.")
+                msg = f"Входной файл модели {input_file} не найден. / Model input file {input_file} not found."
+                logger.error(msg)
+                raise FileNotFoundError(msg)
             self.model_path = input_file
             self.result = None
-            logger.info(f"GraphCreator инициализирован с путями: model_path='{model_path}', out_path='{self.out_path}'. / GraphCreator initialized with paths: model_path='{model_path}', out_path='{self.out_path}'.")
-        else: # Ни analysis_result, ни model_path не предоставлены
+            logger.info(f"GraphCreator инициализирован с путями: model_path='{self.model_path}', out_path='{self.out_path}'. / GraphCreator initialized with paths: model_path='{self.model_path}', out_path='{self.out_path}'.")
+        else:
             msg = "Необходимо предоставить либо 'analysis_result', либо 'model_path' (out_path обязателен в любом случае). / Either 'analysis_result' or 'model_path' must be provided (out_path is mandatory in any case)."
             logger.error(msg)
             raise ValueError(msg)
@@ -104,31 +105,33 @@ class GraphCreator:
 
     def _ensure_analysis_result(self) -> None:
         """
-        Гарантирует, что `self.result` (результат анализа) доступен.
+        Гарантирует, что `self.result` (результат анализа типа `NetworkAnalysisResult`) доступен.
         Если `self.result` еще не установлен (None), вызывает `model_to_tree()` для его получения.
-        Ensures that `self.result` (the analysis result) is available.
+        Ensures that `self.result` (the `NetworkAnalysisResult` analysis result) is available.
         If `self.result` is not yet set (None), calls `model_to_tree()` to obtain it.
 
         Выбрасывает / Raises:
-            ValueError: Если `model_path` не был установлен (необходим для `model_to_tree`).
-                        If `model_path` was not set (needed for `model_to_tree`).
+            ValueError: Если `model_path` не был установлен (необходим для `model_to_tree`),
+                        или если `model_to_tree()` не смог установить `self.result`.
+                        If `model_path` was not set (needed for `model_to_tree`),
+                        or if `model_to_tree()` failed to set `self.result`.
             Исключения от `NetworkAnalyzer.analyze_network` (через `model_to_tree`).
             Exceptions from `NetworkAnalyzer.analyze_network` (via `model_to_tree`).
         """
         if self.result is None:
-            if not self.model_path: # self.out_path всегда есть из __init__
+            if not self.model_path: # self.out_path всегда есть и проверен в __init__
                 msg = "model_path должен быть установлен для выполнения model_to_tree, если analysis_result не предоставлен изначально. / model_path must be set to execute model_to_tree if analysis_result was not provided initially."
                 logger.error(msg)
                 raise ValueError(msg)
             logger.info("self.result не найден, вызов model_to_tree(). / self.result not found, calling model_to_tree().")
             self.model_to_tree()
-            if self.result is None: # Дополнительная проверка после вызова model_to_tree
-                msg = "model_to_tree() не смог установить self.result. / model_to_tree() failed to set self.result."
+            if not isinstance(self.result, NetworkAnalysisResult): # Проверка типа после вызова
+                msg = "model_to_tree() не смог установить корректный self.result (ожидался NetworkAnalysisResult). / model_to_tree() failed to set a correct self.result (NetworkAnalysisResult expected)."
                 logger.error(msg)
                 raise ValueError(msg)
 
     @staticmethod
-    def save_json(graph_output_path: Path, data: Dict[str, Set[Any]]) -> None: # Изменен параметр file_path_param на graph_output_path
+    def save_json(graph_output_path: Path, data: Dict[str, Set[str]]) -> None: # data: Dict[str, Set[str]]
         """
         Сохраняет данные графа (список смежности) в JSON-файл.
 
@@ -137,40 +140,38 @@ class GraphCreator:
         Перед сохранением множества соседей конвертируются в списки.
 
         Параметры / Parameters:
-            file_path_param (Path): Базовый путь к файлу (используется для определения директории сохранения).
-                                    Base file path (used to determine the save directory).
-            data (Dict[str, Set[Any]]): Данные графа в виде словаря списков смежности,
-                                        где ключи - узлы, а значения - множества их соседей.
-                                        Graph data as an adjacency list dictionary, where keys are nodes
-                                        and values are sets of their neighbors.
+            graph_output_path (Path): Путь к директории, куда будет сохранен файл `output_graph.json`.
+                                      Path to the directory where `output_graph.json` will be saved.
+            data (Dict[str, Set[str]]): Данные графа в виде словаря списков смежности (узлы и соседи - строки).
+                                        Graph data as an adjacency list dictionary (nodes and neighbors are strings).
         """
-        # Преобразование множеств в списки для JSON-сериализации
-        adjacency_dict_serializable = {node: list(neighbors) for node, neighbors in data.items()}
+        # Преобразование множеств строк в списки строк для JSON-сериализации
+        adjacency_dict_serializable: Dict[str, List[str]] = {
+            str(node): [str(neighbor) for neighbor in neighbors]
+            for node, neighbors in data.items()
+        }
         
-        # Имя файла теперь жестко задано как 'output_graph.json', а graph_output_path - это директория.
-        # Если graph_output_path - это полный путь к файлу, то нужно извлечь директорию.
-        if graph_output_path.is_file():
-            output_directory = graph_output_path.parent
-        else:
-            output_directory = graph_output_path
+        output_directory = graph_output_path
+        if output_directory.is_file(): # Если случайно передали путь к файлу вместо директории
+            output_directory = output_directory.parent
 
-        output_directory.mkdir(parents=True, exist_ok=True) # Создаем директорию, если ее нет
+        output_directory.mkdir(parents=True, exist_ok=True)
         actual_save_path = output_directory / 'output_graph.json'
 
         logger.info(f"Сохранение графа в: {actual_save_path} / Saving graph to: {actual_save_path}")
         try:
             with open(actual_save_path, 'w', encoding='utf-8') as file:
                 json.dump(adjacency_dict_serializable, file, indent=4, ensure_ascii=False)
-            logger.info(f"Граф успешно сохранен. / Graph saved successfully.")
-        except IOError as e: # IOError более общий, чем OSError для файловых операций
+            logger.info(f"Граф успешно сохранен в {actual_save_path}. / Graph saved successfully to {actual_save_path}.")
+        except IOError as e:
             logger.error(f"Ошибка ввода-вывода при сохранении файла графа {actual_save_path}: {e} / IO error saving graph file {actual_save_path}: {e}")
-            raise # Пробрасываем ошибку дальше
-        except Exception as e: # Общий обработчик для других непредвиденных ошибок
-            logger.error(f"Непредвиденная ошибка при сохранении графа в {actual_save_path}: {e} / Unexpected error saving graph to {actual_save_path}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Непредвиденная ошибка при сохранении графа в {actual_save_path}: {type(e).__name__} - {e} / Unexpected error saving graph to {actual_save_path}: {type(e).__name__} - {e}")
             raise
 
 
-    def load_json(self, file_path: Path) -> Dict[str, Set[Any]]: # file_path должен быть полным путем к файлу output_graph.json
+    def load_json(self, file_path: Union[str, Path]) -> Dict[str, Set[str]]: # file_path должен быть полным путем к файлу output_graph.json
         """
         Загружает данные графа (список смежности) из JSON-файла.
 
@@ -179,35 +180,38 @@ class GraphCreator:
         Она может быть полезна для загрузки ранее сохраненных графов для анализа или тестирования.
 
         Параметры / Parameters:
-            file_path (Path): Путь к JSON-файлу, содержащему граф.
-                              Path to the JSON file containing the graph.
+            file_path (Union[str, Path]): Путь к JSON-файлу, содержащему граф.
+                                          Path to the JSON file containing the graph.
 
         Возвращает / Returns:
-            Dict[str, Set[Any]]: Загруженный граф в виде словаря, где ключи - узлы,
-                                 а значения - множества их соседей.
-                                 The loaded graph as a dictionary, where keys are nodes
-                                 and values are sets of their neighbors.
+            Dict[str, Set[str]]: Загруженный граф в виде словаря, где ключи - узлы (строки),
+                                 а значения - множества их соседей (строк).
+                                 The loaded graph as a dictionary, where keys are nodes (strings)
+                                 and values are sets of their neighbors (strings).
         """
+        file_path_obj = Path(file_path) if isinstance(file_path, str) else file_path
         try:
-            logger.info(f"Загрузка графа из: {file_path} / Loading graph from: {file_path}")
-            with open(file_path, 'r', encoding='utf-8') as file:
+            logger.info(f"Загрузка графа из: {file_path_obj} / Loading graph from: {file_path_obj}")
+            with open(file_path_obj, 'r', encoding='utf-8') as file:
                 adjacency_list_loaded = json.load(file)
 
-            # Преобразование списков соседей обратно в множества
-            graph: Dict[str, Set[Any]] = {node: set(neighbors) for node, neighbors in adjacency_list_loaded.items()}
-            logger.info(f"Граф успешно загружен. / Graph loaded successfully.")
+            graph: Dict[str, Set[str]] = {
+                str(node): {str(neighbor) for neighbor in neighbors}
+                for node, neighbors in adjacency_list_loaded.items()
+            }
+            logger.info(f"Граф успешно загружен из {file_path_obj}. / Graph loaded successfully from {file_path_obj}.")
             return graph
         except FileNotFoundError:
-            logger.error(f"Файл не найден: {file_path} / File not found: {file_path}")
+            logger.error(f"Файл графа не найден: {file_path_obj} / Graph file not found: {file_path_obj}")
             raise
         except json.JSONDecodeError as e:
-            logger.error(f"Ошибка декодирования JSON из файла {file_path}: {e} / JSON decoding error from file {file_path}: {e}")
+            logger.error(f"Ошибка декодирования JSON из файла графа {file_path_obj}: {e} / JSON decoding error from graph file {file_path_obj}: {e}")
             raise
         except Exception as e:
-            logger.error(f"Непредвиденная ошибка при загрузке JSON: {e} / Unexpected error loading JSON: {e}")
+            logger.error(f"Непредвиденная ошибка при загрузке графа из {file_path_obj}: {type(e).__name__} - {e} / Unexpected error loading graph from {file_path_obj}: {type(e).__name__} - {e}")
             raise
 
-    def model_to_tree(self) -> None:
+    def model_to_tree(self) -> None: # Этот метод теперь только устанавливает self.result
         """
         Обрабатывает исходную модель с помощью `NetworkAnalyzer` для получения
         промежуточной древовидной структуры в виде объекта `NetworkAnalysisResult`.
@@ -274,14 +278,12 @@ class GraphCreator:
             Dict[str, Set[Any]]: Созданный граф в виде списка смежности.
                                  The created graph as an adjacency list.
 
-        Перед вызовом этого метода, атрибут `self.result` должен быть корректно установлен
-        (обычно через `__init__` с параметром `analysis_result` или после вызова `_ensure_analysis_result`).
-        Before calling this method, the `self.result` attribute must be correctly set
-        (usually via `__init__` with the `analysis_result` parameter or after calling `_ensure_analysis_result`).
+        Перед вызовом этого метода, атрибут `self.result` должен быть корректно установлен.
+        Before calling this method, the `self.result` attribute must be correctly set.
 
         Возвращает / Returns:
-            Dict[str, Set[Any]]: Созданный граф в виде списка смежности.
-                                 The created graph as an adjacency list.
+            Dict[str, Set[str]]: Созданный граф в виде списка смежности (узлы и соседи - строки).
+                                 The created graph as an adjacency list (nodes and neighbors are strings).
 
         Выбрасывает / Raises:
             ValueError: Если `self.result` или `self.result.tree` отсутствуют или имеют неверный тип.
@@ -289,15 +291,16 @@ class GraphCreator:
             OSError: Если возникает ошибка при сохранении созданного графа в JSON-файл.
                      If an error occurs while saving the created graph to a JSON file.
         """
-        self._ensure_analysis_result() # Гарантируем наличие self.result
+        self._ensure_analysis_result()
 
-        # self.result здесь точно NetworkAnalysisResult, иначе _ensure_analysis_result выбросил бы ошибку
-        if not hasattr(self.result, 'tree') or not isinstance(self.result.tree, dict): # Дополнительная проверка для полноты
+        if not isinstance(self.result, NetworkAnalysisResult) or \
+           not hasattr(self.result, 'tree') or \
+           not isinstance(self.result.tree, dict):
             msg = "Атрибут 'tree' в self.result отсутствует или имеет неверный тип. Невозможно создать граф. / 'tree' attribute in self.result is missing or has an incorrect type. Cannot create graph."
             logger.error(msg)
             raise ValueError(msg)
 
-        undirected_graph: Dict[str, Set[Any]] = defaultdict(set)
+        undirected_graph: Dict[str, Set[str]] = defaultdict(set)
         tree_data = self.result.tree
 
         try:
@@ -320,7 +323,6 @@ class GraphCreator:
             raise ValueError(msg) from e
 
         try:
-            # self.out_path определяет директорию, имя файла 'output_graph.json' задается в save_json
             GraphCreator.save_json(self.out_path, undirected_graph)
             logger.info(f"Граф создан и сохранен в директории '{self.out_path}' как 'output_graph.json'. / Graph created and saved in directory '{self.out_path}' as 'output_graph.json'.")
         except OSError as e:
@@ -329,7 +331,7 @@ class GraphCreator:
 
         return undirected_graph
 
-    def visualize_graph_with_print(self, graph: Dict[str, Set[Any]]) -> None:
+    def visualize_graph_with_print(self, graph: Dict[str, Set[str]]) -> None:
         """
         Выполняет простую текстовую визуализацию графа в консоли.
 
@@ -338,30 +340,27 @@ class GraphCreator:
         отслеживает уже напечатанные ребра. Для вывода отображаются только первые 6 символов имени узла.
 
         Параметры / Parameters:
-            graph (Dict[str, Set[Any]]): Граф в виде списка смежности для визуализации.
-                                         The graph as an adjacency list to visualize.
+            graph (Dict[str, Set[str]]): Граф в виде списка смежности (узлы и соседи - строки) для визуализации.
+                                         The graph as an adjacency list (nodes and neighbors are strings) to visualize.
         """
         logger.info("Визуализация графа (текстовая) / Visualizing graph (text-based):")
         if not graph:
             print("Граф пуст. Нечего визуализировать. / Graph is empty. Nothing to visualize.")
             return
 
-        printed_edges: Set[tuple] = set() # Для отслеживания напечатанных ребер
+        printed_edges: Set[Tuple[str,str]] = set()
 
         for node, neighbors in graph.items():
             for neighbor in neighbors:
-                # Создаем каноническое представление ребра (сортируем имена узлов)
-                # чтобы избежать дублирования (например, ('A', 'B') и ('B', 'A'))
                 edge = tuple(sorted((str(node), str(neighbor))))
                 if edge not in printed_edges:
-                    # Используем срезы для укорачивания длинных имен узлов в выводе
                     print(f"{edge[0][:20]:<20} --- {edge[1][:20]}")
                     printed_edges.add(edge)
         if not printed_edges:
             print("В графе нет ребер для отображения. / No edges in the graph to display.")
 
 
-    def visualize_graph_with_plot(self, graph: TypingOptional[Dict[str, Set[Any]]] = None) -> None:
+    def visualize_graph_with_plot(self, graph: TypingOptional[Dict[str, Set[str]]] = None) -> None:
         """
         Визуализирует граф с использованием библиотек `networkx` и `matplotlib`.
         Visualizes the graph using `networkx` and `matplotlib` libraries.
@@ -484,5 +483,5 @@ if __name__ == "__main__":
     graph_creator.model_to_tree()
     graph = graph_creator.create_graph()
     #graph_creator.visualize_graph_with_print(graph)
-    graph_creator.visualize_graph_with_plot()
+    #graph_creator.visualize_graph_with_plot()
         
