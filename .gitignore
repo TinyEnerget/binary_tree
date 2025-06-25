@@ -13,6 +13,7 @@ model_processing/__pycache__
 tree_analyzer/__pycache__
 graph.json
 graph_analyzer/__pycache__
+graph_analyzer/connecting_graphs_checker_old.py
 converted.py
 output_graph.json
 .vscode
