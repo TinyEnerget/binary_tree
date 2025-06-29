@@ -1,52 +1,39 @@
 import json
 from typing import Dict, Any
+from pathlib import Path
 
-def load_json(file_path: str) -> Dict[str, Any]:
-    """Загружает JSON из файла."""
+def load_json(file_path: Path) -> Dict[str, Any]:
+    """
+    Loads JSON data from a specified file path.
+
+    Args:
+        file_path (Path): The path to the JSON file.
+
+    Returns:
+        Dict[str, Any]: The data loaded from the JSON file.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        json.JSONDecodeError: If the file content is not valid JSON.
+    """
     with open(file_path, 'r', encoding='utf-8') as file:
-        #model = rewrite_nodes(json.load(file))
-        #model = find_root_nodes(model)
         return json.load(file)
 
-def save_json(file_path: str, data: Dict[str, Any]) -> None:
-    """Сохраняет данные в JSON-файл."""
+def save_json(file_path: Path, data: Dict[str, Any]) -> None:
+    """
+    Saves the given data to a JSON file at the specified path.
+    Ensures the parent directory for the file exists before writing.
+
+    Args:
+        file_path (Path): The path where the JSON file will be saved.
+        data (Dict[str, Any]): The data to save.
+
+    Raises:
+        OSError: If there is an issue writing the file (e.g., permissions).
+    """
+    # Ensure parent directory exists
+    file_path.parent.mkdir(parents=True, exist_ok=True)
     with open(file_path, 'w', encoding='utf-8') as file:
         json.dump(data, file, indent=6, ensure_ascii=False)
 
-def rewrite_nodes(model: dict) -> dict:
-    nodes = {}
-    for key, value in model['nodes'].items():
-        #print(f'Key: {key}, Value: {value}')
-        for id in value:
-            if 'bus' == model['elements'][id]['Type']:
-                nodes[id] = value
-                #print(f'Node: {id}, Value: {value}')
-                           
-    clear_nodes = {}
-    for key, value in nodes.items():
-        new_value = []
-        #print(f'Key: {key}, Value: {value}')
-        for item in value:
-            if key != item:
-                new_value.append(item)
-        clear_nodes[key] = new_value
-        #print(f'New Key: {key}, New Value: {new_value}')
-    model['nodes'] = clear_nodes
-    return model
-
-def find_root_nodes(model):
-    nodes = []
-    roots = []
-    for key, node in model['nodes'].items():
-        nodes.extend(node)
-        #nodes.append(key)
-
-    nodes = list(set(nodes))
-
-    for node in nodes: 
-        if model['elements'][node]['Type'] == 'system':
-            roots.append(node)
-
-    model['roots'] = roots
-    model['nodes_id'] = nodes
-    return model     
+# rewrite_nodes and find_root_nodes have been moved to ModelPreprocessor

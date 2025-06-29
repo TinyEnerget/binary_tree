@@ -2,35 +2,49 @@ from typing import Dict, Any, List, Tuple
 from .models import NetworkModel, NetworkElement, ElementType
 import logging
 logger = logging.getLogger(__name__)
-class NetworkTreeBuilder:
-    """Построитель дерева электрической сети.
-
-    Формирует иерархическую структуру сети, определяя корневые элементы и их дочерние связи.
+class NetworkGraphBuilder: # Renamed from NetworkTreeBuilder
+    """
+    Builds graph structures for an electrical network.
+    Can create various graph representations (e.g., a hierarchical tree
+    or a general undirected graph) based on the network model.
 
     Args:
-        model (NetworkModel): Модель сети, содержащая элементы и их соединения.
+        model (NetworkModel): The network model instance containing elements and their connections.
     """
     
     def __init__(self, model: NetworkModel):
+        """
+        Initializes the NetworkGraphBuilder with a network model.
+
+        Args:
+            model (NetworkModel): The pre-loaded and parsed network model.
+        """
         self.model = model
     
     def build_tree(self) -> Dict[str, Any]:
-        """Строит дерево сети.
+        """
+        Builds a hierarchical tree representation of the network.
 
-        Проходит по всем элементам сети, определяет их дочерние элементы с использованием
-        соответствующих анализаторов и формирует структуру дерева.
+        This method iterates through network elements, determining their children
+        using a system of registered element analyzers (if available and configured),
+        and forms the tree structure. The definition of "child" depends on the
+        logic within these analyzers.
 
         Returns:
-            Dict[str, Any]: Словарь с полями:
-                - 'roots': список идентификаторов корневых элементов.
-                - 'nodes': список всех идентификаторов элементов.
-                - 'tree': словарь, где ключ — идентификатор элемента, значение — словарь с полем
-                          'child', содержащим список идентификаторов дочерних элементов.
+            Dict[str, Any]: A dictionary containing:
+                - 'roots' (List[str]): List of root element IDs. These are taken from
+                                       `self.model.roots`, which are determined during preprocessing.
+                - 'nodes' (List[str]): List of all element IDs in the model.
+                - 'tree' (Dict[str, Dict[str, List[str]]]): An adjacency-list-like dictionary
+                                                            representing parent-child relationships.
+                                                            Keys are parent element IDs, and values are
+                                                            dictionaries like `{'child': [child_ids_list]}`.
         """
         tree: Dict[str, Dict[str, Any]] = {}
         all_nodes = list(self.model.elements.keys())
-        roots = self.model.get_root_elements()
-        # Строим дерево для каждого узла
+        # Use self.model.roots, which was set from preprocessed_data
+        roots = self.model.roots
+        # Build tree for each node
         for element_id in all_nodes:
             element = self.model.get_element(element_id)
             if not element:
@@ -58,10 +72,11 @@ class NetworkTreeBuilder:
                 - 'edges': список кортежей (source, target), представляющих связи.
         """
         graph = self.model.get_undirected_graph()
-        roots = self.model.get_root_elements()
+        # Используем self.model.roots, который был установлен из preprocessed_data
+        roots = self.model.roots
         logger.debug("Построен ненаправленный граф: %d узлов", len(graph))
         return graph, roots
-        #roots = self.model.get_root_elements()
+        #roots = self.model.roots # Changed from get_root_elements()
         #graph = self.model.get_undirected_graph()
         #edges = []
         #

@@ -1,130 +1,110 @@
 from typing import Dict, Any
+from pathlib import Path
 from .utils import load_json, save_json
+from .preprocessor import ModelPreprocessor
 from .comparator import TreeComparator
 from .models import NetworkModel
-from .tree_builder import NetworkTreeBuilder
+from .graph_builder import NetworkGraphBuilder # Updated import
 
 
 class NetworkAnalyzer:
-    """Основной класс для анализа электрической сети и построения её дерева.
-
-    Координирует процесс загрузки модели, создания дерева и сравнения c эталонным результатом.
+    """
+    Core class for analyzing electrical networks and building their graph structure.
+    It orchestrates model loading, preprocessing, graph construction, and optional saving.
     """
     
-    @staticmethod
-    def load_model(file_path: str) -> Dict[str, Any]:
-        """Загружает модель сети из JSON-файла.
+    def __init__(self):
+        """Initializes the NetworkAnalyzer with a ModelPreprocessor."""
+        self.preprocessor = ModelPreprocessor()
+
+    def load_and_preprocess_model(self, file_path: Path) -> Dict[str, Any]:
+        """
+        Loads a network model from a JSON file and applies preprocessing steps.
 
         Args:
-            file_path (str): Путь к JSON-файлу.
+            file_path (Path): The path to the JSON model file.
 
         Returns:
-            Dict[str, Any]: Данные модели сети.
-
-        Raises:
-            FileNotFoundError: Если файл не найден.
-            json.JSONDecodeError: Если файл содержит некорректный JSON.
+            Dict[str, Any]: The preprocessed model data.
         """
-        return load_json(file_path)
+        model_data = load_json(file_path)
+        # Apply transformations to the model via ModelPreprocessor
+        processed_model_data = self.preprocessor.preprocess(model_data)
+        return processed_model_data
     
     @staticmethod
-    def save_tree(tree_data: Dict[str, Any], file_path: str) -> None:
-        """Сохраняет дерево сети в JSON-файл.
-
-        Args:
-            tree_data (Dict[str, Any]): Данные дерева сети.
-            file_path (str): Путь для сохранения файла.
-
-        Raises:
-            OSError: Если не удается записать файл.
+    def save_processed_model(processed_data: Dict[str, Any], file_path: Path) -> None:
         """
-        save_json(file_path, tree_data)
-    
-    @classmethod
-    def analyze_network(cls, model_path: str, output_path: str | None = None) -> Dict[str, Any]:
-        """Анализирует сеть и строит дерево.
+        Saves the processed model data (including the graph structure) to a JSON file.
 
         Args:
-            model_path (str): Путь к JSON-файлу c моделью сети.
-            output_path (str, optional): Путь для сохранения результирующего дерева. Если не указан,
-                результат не сохраняется.
+            processed_data (Dict[str, Any]): The data to save.
+            file_path (Path): The path where the JSON file will be saved.
+        """
+        save_json(file_path, processed_data)
+    
+    def build_network_structure(self, model_path: Path, output_path: Path | None = None) -> Dict[str, Any]:
+        """
+        Performs the full cycle: loading, preprocessing the model, and building its graph structure.
+        Optionally saves the result.
+
+        Args:
+            model_path (Path): Path to the JSON model file.
+            output_path (Path | None, optional): Path to save the resulting structure.
+                                                 If None, the result is not saved. Defaults to None.
 
         Returns:
-            Dict[str, Any]: Словарь c полями 'roots', 'nodes' и 'tree', описывающий структуру сети.
-
-        Raises:
-            FileNotFoundError: Если входной файл модели не найден.
+            Dict[str, Any]: A dictionary describing the network structure, typically including
+                            'graph' (adjacency list), 'roots' (list of root IDs),
+                            and 'all_nodes' (list of all node IDs).
         """
-        # Загружаем модель
-        model_data = cls.load_model(model_path)
-        model_data = cls.rewrite_nodes(model_data)
-        model_data = cls.find_root_nodes(model_data)
+        # Load and preprocess the model
+        processed_model_data = self.load_and_preprocess_model(model_path)
+
+        # Create a NetworkModel object from the preprocessed data
+        network_model_obj = NetworkModel(processed_model_data)
         
-        # Создаем модель сети
-        network_model = NetworkModel(model_data)
-        # Строим дерево
-        tree_builder = NetworkTreeBuilder(network_model)
-        tree_result = tree_builder.build_tree()
+        # Build the graph structure using NetworkGraphBuilder
+        builder = NetworkGraphBuilder(network_model_obj)
         
-        # Сохраняем результат, если указан путь
+        # The primary path for GraphCreator uses an undirected graph representation.
+        graph_adj_list, roots_list = builder.build_undirected_graph()
+
+        # Construct the result dictionary.
+        # 'graph' holds the adjacency list.
+        # 'roots' holds the list of root node IDs.
+        # 'all_nodes' can be sourced from preprocessed data or graph keys.
+        result_structure = {
+            'graph': graph_adj_list,
+            'roots': roots_list,
+            'all_nodes': processed_model_data.get('nodes_id', list(graph_adj_list.keys()))
+        }
+
+        # Save the result if an output path is provided
         if output_path:
-            cls.save_tree(tree_result, output_path)
+            # Save the structure that will be returned
+            self.save_processed_model(result_structure, output_path)
         
-        return tree_result
+        return result_structure
     
-    @classmethod
-    def compare_with_reference(cls, result: Dict[str, Any], reference_path: str) -> bool:
-        """Сравнивает результат построения дерева c эталонным.
+    def compare_with_reference(self, result_structure: Dict[str, Any], reference_path: Path) -> bool:
+        """
+        Compares the resulting network structure with a reference JSON file.
 
         Args:
-            result (Dict[str, Any]): Результат построения дерева (содержит 'roots', 'nodes', 'tree').
-            reference_path (str): Путь к JSON-файлу c эталонным деревом.
+            result_structure (Dict[str, Any]): The generated network structure.
+            reference_path (Path): Path to the JSON file containing the reference structure.
 
         Returns:
-            bool: True, если результат совпадает c эталоном, иначе False.
-
-        Raises:
-            FileNotFoundError: Если эталонный файл не найден.
+            bool: True if the structures are identical, False otherwise.
         """
-        reference = cls.load_model(reference_path)
-        return TreeComparator.compare(result, reference)
-    
-    @classmethod
-    def rewrite_nodes(cls, model: dict) -> dict:
-        nodes = {}
-        for key, value in model['nodes'].items():
-            #print(f'Key: {key}, Value: {value}')
-            for id in value:
-                if 'bus' == model['elements'][id]['Type']:
-                    nodes[id] = value
-                    #print(f'Node: {id}, Value: {value}')
+        # Load reference data
+        reference_data = load_json(reference_path)
+        # Note: The reference data might need the same preprocessing if it's in raw format.
+        # For a direct structural comparison, the reference should be in the processed format.
+        return TreeComparator.compare(result_structure, reference_data)
 
-        clear_nodes = {}
-        for key, value in nodes.items():
-            new_value = []
-            #print(f'Key: {key}, Value: {value}')
-            for item in value:
-                if key != item:
-                    new_value.append(item)
-            clear_nodes[key] = new_value
-            #print(f'New Key: {key}, New Value: {new_value}')
-        model['nodes'] = clear_nodes
-        return model
-
-    @classmethod
-    def find_root_nodes(cls, model):
-        nodes = []
-        roots = []
-        for key, node in model['nodes'].items():
-            nodes.extend(node)
-            #nodes.append(key)
-
-        nodes = list(set(nodes))
-
-        for node in nodes: 
-            if model['elements'][node]['Type'] == 'system':
-                roots.append(node)
-
-        model['roots'] = roots
-        model['nodes_id'] = nodes
-        return model
+# Note: The class method `analyze_network` has been effectively replaced by the instance method `build_network_structure`.
+# Static methods for loading/saving are now primarily handled by `load_and_preprocess_model` (instance method)
+# and `save_processed_model` (static method, but called by instance method), or directly via `utils.py`.
+# NetworkAnalyzer now requires instantiation to be used.
